@@ -7,7 +7,7 @@ from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Strin
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
-from app.models.enums import LienParente, ListeCode, Sexe, UserRole
+from app.models.enums import DemandeStatut, LienParente, ListeCode, Sexe, UserRole
 
 
 class User(TimestampMixin, Base):
@@ -112,6 +112,12 @@ class DemandeInscription(Base):
         server_default=func.now(),
     )
     rang_dans_liste: Mapped[int] = mapped_column(Integer, nullable=False)
+    statut: Mapped[DemandeStatut] = mapped_column(
+        Enum(DemandeStatut, name="demande_statut"),
+        nullable=False,
+        server_default=DemandeStatut.SOUMISE.value,
+    )
+    non_validation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     is_selection_finale: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     selected_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
 from app.db.session import get_db
-from app.models.enums import ListeCode, UserRole
+from app.models.enums import DemandeStatut, ListeCode, UserRole
 from app.models.models import DemandeInscription, Desistement, Enfant, Liste, Parent, User
 from app.services.email import send_email, uniq_emails
 from app.services.email_templates import (
@@ -27,6 +27,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 class FinalSelectionIn(BaseModel):
     is_selection_finale: bool
+    non_validation_reason: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TransferIn(BaseModel):
@@ -68,6 +69,8 @@ def list_demandes_par_liste(
             "liste": liste.code.value,
             "rang": d.rang_dans_liste,
             "date_inscription": d.date_inscription,
+            "statut": d.statut.value,
+            "non_validation_reason": d.non_validation_reason,
             "selection_finale": d.is_selection_finale,
             "parent_matricule": p.matricule,
             "enfant": {
@@ -96,9 +99,21 @@ def set_selection_finale(
     if not demande:
         raise HTTPException(status_code=404, detail="Demande introuvable.")
 
+    if not payload.is_selection_finale and not (payload.non_validation_reason and payload.non_validation_reason.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Le motif est obligatoire quand l'action est NON (non validée).",
+        )
+
     demande.is_selection_finale = payload.is_selection_finale
     demande.selected_by_user_id = user.id
     demande.selected_at = datetime.now(timezone.utc)
+    if payload.is_selection_finale:
+        demande.statut = DemandeStatut.RETENUE
+        demande.non_validation_reason = None
+    else:
+        demande.statut = DemandeStatut.NON_VALIDEE
+        demande.non_validation_reason = payload.non_validation_reason.strip() if payload.non_validation_reason else None
     db.commit()
 
     # Emails (parent + admins)
@@ -307,6 +322,7 @@ def valider_desistement(
             demande.is_selection_finale = False
             demande.selected_by_user_id = user.id
             demande.selected_at = datetime.now(timezone.utc)
+            demande.statut = DemandeStatut.DESISTEE
 
     db.commit()
 

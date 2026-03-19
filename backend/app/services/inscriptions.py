@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.models.enums import LienParente, ListeCode
+from app.models.enums import DemandeStatut, LienParente, ListeCode
 from app.models.models import DemandeInscription, Enfant, Liste, Parent, Service, User
 
 
@@ -146,6 +146,8 @@ def create_inscription_for_parent_user(
         liste_id=target_liste.id,
         rang_dans_liste=rang,
         date_inscription=datetime.now(timezone.utc),
+        statut=DemandeStatut.SOUMISE,
+        non_validation_reason=None,
         is_selection_finale=False,
         selected_by_user_id=None,
         selected_at=None,

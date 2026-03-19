@@ -33,6 +33,8 @@ class DemandeOut(BaseModel):
     liste_code: str
     rang_dans_liste: int
     date_inscription: datetime
+    statut: str
+    non_validation_reason: Optional[str] = None
     is_selection_finale: bool
 
     enfant_id: int

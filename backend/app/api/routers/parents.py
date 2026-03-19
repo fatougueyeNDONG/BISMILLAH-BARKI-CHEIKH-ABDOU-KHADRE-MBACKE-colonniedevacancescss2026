@@ -179,6 +179,8 @@ def _to_demande_out(db: Session, demande: DemandeInscription) -> DemandeOut:
         liste_code=liste.code.value,
         rang_dans_liste=demande.rang_dans_liste,
         date_inscription=demande.date_inscription,
+        statut=demande.statut.value,
+        non_validation_reason=demande.non_validation_reason,
         is_selection_finale=demande.is_selection_finale,
         enfant_id=enfant.id,
         enfant_prenom=enfant.prenom,

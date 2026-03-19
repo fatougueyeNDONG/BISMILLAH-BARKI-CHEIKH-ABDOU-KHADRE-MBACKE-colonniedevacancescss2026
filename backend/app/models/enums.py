@@ -26,3 +26,10 @@ class ListeCode(str, enum.Enum):
     ATTENTE_N1 = "ATTENTE_N1"
     ATTENTE_N2 = "ATTENTE_N2"
 
+
+class DemandeStatut(str, enum.Enum):
+    SOUMISE = "SOUMISE"
+    RETENUE = "RETENUE"
+    NON_VALIDEE = "NON_VALIDEE"
+    DESISTEE = "DESISTEE"
+
