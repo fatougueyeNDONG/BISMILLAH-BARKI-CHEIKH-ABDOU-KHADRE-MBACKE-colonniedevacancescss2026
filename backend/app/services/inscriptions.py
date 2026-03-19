@@ -210,3 +210,33 @@ def request_desistement(*, db: Session, user: User, demande_id: int, reason: str
     db.add(d)
     db.flush()
 
+
+def cancel_desistement(*, db: Session, user: User, demande_id: int) -> None:
+    parent = db.query(Parent).filter(Parent.user_id == user.id).first()
+    if not parent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent introuvable.")
+
+    demande = (
+        db.query(DemandeInscription)
+        .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
+        .filter(DemandeInscription.id == demande_id, Enfant.parent_id == parent.id)
+        .first()
+    )
+    if not demande:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Demande introuvable.")
+
+    if demande.desistement is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Aucun désistement à annuler.")
+
+    if demande.desistement.validated:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Annulation impossible : le gestionnaire/super administrateur a déjà validé le désistement. "
+                "Veuillez contacter le gestionnaire."
+            ),
+        )
+
+    db.delete(demande.desistement)
+    db.flush()
+

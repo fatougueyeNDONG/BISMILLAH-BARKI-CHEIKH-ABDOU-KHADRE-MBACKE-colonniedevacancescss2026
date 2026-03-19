@@ -15,7 +15,7 @@ from app.schemas.inscriptions import (
     InscriptionCreateIn,
     TitulaireUpdateIn,
 )
-from app.services.inscriptions import create_inscription_for_parent_user, request_desistement, set_titulaire
+from app.services.inscriptions import cancel_desistement, create_inscription_for_parent_user, request_desistement, set_titulaire
 from app.services.email import send_email, uniq_emails
 from app.services.email_templates import (
     body_desistement_requested,
@@ -167,6 +167,17 @@ def demander_desistement(
                 parent_matricule=parent.matricule, enfant=enfant_label, when=now, reason=payload.reason
             ),
         )
+    return {"ok": True}
+
+
+@router.post("/desistement/{demande_id}/annuler")
+def annuler_desistement(
+    demande_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.PARENT)),
+):
+    cancel_desistement(db=db, user=user, demande_id=demande_id)
+    db.commit()
     return {"ok": True}
 
 
