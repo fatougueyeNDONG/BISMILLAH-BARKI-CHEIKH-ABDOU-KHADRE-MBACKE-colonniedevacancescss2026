@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MOCK_SITES } from '@/data/mockData';
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
@@ -13,6 +13,8 @@ import { AlertTriangle, CheckCircle2, UserPlus, Star, Clock, PartyPopper } from 
 export default function InscrireEnfant() {
   const { parent } = useAuth();
   const { getEnfantsByParent, addEnfant, settings, addHistorique } = useInscription();
+  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+  const [sites, setSites] = useState<Array<{ id: number; nom: string; code: string }>>([]);
 
   const [prenom, setPrenom] = useState('');
   const [nom, setNom] = useState('');
@@ -30,6 +32,25 @@ export default function InscrireEnfant() {
   const [successMessage, setSuccessMessage] = useState('');
   const [showNextPrompt, setShowNextPrompt] = useState(false);
   const [showMaxReachedPopup, setShowMaxReachedPopup] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    void (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/admin/sites`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          setSites(data.filter((s) => s?.code && s?.nom));
+        }
+      } catch {
+        // Keep empty fallback if backend is unavailable.
+      }
+    })();
+  }, [API_BASE_URL]);
 
   if (!parent) return null;
 
@@ -64,7 +85,7 @@ export default function InscrireEnfant() {
       setErrorOpen(true);
       return;
     }
-    if (!prenom.trim() || !nom.trim() || !dateNaissance || !sexe || !lienParente || !telephone.trim() || !email.trim() || !site) {
+    if (!prenom.trim() || !nom.trim() || !dateNaissance || !sexe || !lienParente || !telephone.trim() || !site) {
       setErrorTitle("Champs requis");
       setErrorMessage("Veuillez remplir tous les champs obligatoires du formulaire.");
       setErrorOpen(true);
@@ -200,7 +221,7 @@ export default function InscrireEnfant() {
                 <Input value={parent.nom} disabled className="bg-muted/50" />
               </div>
               <div className="space-y-2">
-                <Label className="text-foreground">Email *</Label>
+                <Label className="text-foreground">Email</Label>
                 <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className="h-11 rounded-lg" />
               </div>
               <div className="space-y-2">
@@ -212,7 +233,7 @@ export default function InscrireEnfant() {
                 <Select value={site} onValueChange={setSite}>
                   <SelectTrigger className="h-11 rounded-lg"><SelectValue placeholder="Sélectionner une agence" /></SelectTrigger>
                   <SelectContent>
-                    {MOCK_SITES.filter(s => s.actif).map(s => (
+                    {sites.map(s => (
                       <SelectItem key={s.id} value={s.code}>{s.nom}</SelectItem>
                     ))}
                   </SelectContent>

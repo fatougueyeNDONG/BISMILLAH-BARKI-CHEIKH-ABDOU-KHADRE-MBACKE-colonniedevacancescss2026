@@ -13,9 +13,33 @@ export default function Parametres() {
   const { settings, updateSettings } = useInscription();
   const [capaciteNonDefini, setCapaciteNonDefini] = useState(settings.capaciteMax === null);
   const [maxEnfantsNonDefini, setMaxEnfantsNonDefini] = useState(settings.maxEnfantsParParent === null);
+  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
 
-  const handleSave = () => {
-    toast({ title: '✅ Paramètres enregistrés', description: 'Les paramètres ont été mis à jour avec succès.' });
+  const handleSave = async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      toast({ title: 'Erreur', description: 'Session expirée. Reconnectez-vous.', variant: 'destructive' });
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(settings),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        toast({ title: 'Erreur', description: data?.detail || "Impossible d'enregistrer les paramètres.", variant: 'destructive' });
+        return;
+      }
+      updateSettings(data);
+      toast({ title: '✅ Paramètres enregistrés', description: 'Les paramètres ont été mis à jour avec succès.' });
+    } catch {
+      toast({ title: 'Erreur réseau', description: "Impossible de joindre le backend.", variant: 'destructive' });
+    }
   };
 
   return (
@@ -183,7 +207,7 @@ export default function Parametres() {
         </motion.div>
 
         <div className="flex justify-end">
-          <Button onClick={handleSave} className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">Enregistrer les paramètres</Button>
+          <Button onClick={() => void handleSave()} className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">Enregistrer les paramètres</Button>
         </div>
       </div>
     </div>

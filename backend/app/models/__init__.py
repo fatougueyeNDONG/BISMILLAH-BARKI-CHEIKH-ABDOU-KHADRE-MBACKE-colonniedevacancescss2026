@@ -1,5 +1,6 @@
 from app.models.base import Base
 from app.models.models import (  # noqa: F401
+    AppSetting,
     DemandeInscription,
     Desistement,
     Enfant,

@@ -69,10 +69,10 @@ export default function ListeFinale() {
   };
 
   const exportList = (list: Enfant[], filename: string, format: 'csv' | 'pdf') => {
-    const headers = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Service', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', "Liste d'origine"];
+    const headers = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Service', 'Agence', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', "Liste d'origine"];
     const rows = list.map((e, i) => {
       const p = parents.find(x => x.matricule === e.parentMatricule);
-      return [i + 1, e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, getListeLabel(e.liste)];
+      return [i + 1, e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', p?.site || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, getListeLabel(e.liste)];
     });
 
     if (format === 'csv') {
@@ -104,6 +104,7 @@ export default function ListeFinale() {
             <TableHead className="font-semibold">Nom du parent</TableHead>
             <TableHead className="font-semibold">Prénom du parent</TableHead>
             <TableHead className="font-semibold">Service</TableHead>
+            <TableHead className="font-semibold">Agence</TableHead>
             <TableHead className="font-semibold">Prénom Enfant</TableHead>
             <TableHead className="font-semibold">Nom Enfant</TableHead>
             <TableHead className="font-semibold">Âge</TableHead>
@@ -115,7 +116,7 @@ export default function ListeFinale() {
         </TableHeader>
         <TableBody>
           {list.length === 0 ? (
-            <TableRow><TableCell colSpan={12} className="text-center py-12 text-muted-foreground">Aucun enfant</TableCell></TableRow>
+            <TableRow><TableCell colSpan={13} className="text-center py-12 text-muted-foreground">Aucun enfant</TableCell></TableRow>
           ) : (
             list.map((e, i) => {
               const p = parents.find(x => x.matricule === e.parentMatricule);
@@ -126,6 +127,7 @@ export default function ListeFinale() {
                   <TableCell>{p?.nom || '—'}</TableCell>
                   <TableCell>{p?.prenom || '—'}</TableCell>
                   <TableCell className="text-sm">{p?.service || '—'}</TableCell>
+                  <TableCell className="text-sm">{p?.site || '—'}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
                       {e.prenom}

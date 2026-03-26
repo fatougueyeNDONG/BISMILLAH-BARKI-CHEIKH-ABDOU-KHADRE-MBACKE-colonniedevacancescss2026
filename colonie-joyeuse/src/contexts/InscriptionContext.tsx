@@ -144,6 +144,15 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refreshDemandes();
+    void (async () => {
+      try {
+        const res = await apiFetch('/admin/settings');
+        const remote = await res.json();
+        setSettings((prev) => ({ ...prev, ...remote }));
+      } catch {
+        // Keep defaults when settings endpoint is unavailable.
+      }
+    })();
   }, []);
 
   const updateSettings = (s: Partial<AppSettings>) => {

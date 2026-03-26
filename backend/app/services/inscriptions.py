@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 
 from fastapi import HTTPException, status
@@ -7,7 +8,10 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.models.enums import DemandeStatut, LienParente, ListeCode
-from app.models.models import DemandeInscription, Enfant, Liste, Parent, Service, User
+from app.models.models import AppSetting, DemandeInscription, Enfant, Liste, Parent, Service, User
+
+SETTINGS_KEY = "runtime_settings"
+DEFAULT_MAX_ENFANTS_PAR_PARENT = 2
 
 
 def _validate_annee_naissance(d: date) -> None:
@@ -49,6 +53,21 @@ def _next_rang_for_liste(db: Session, liste_id: int) -> int:
         DemandeInscription.liste_id == liste_id
     ).scalar()
     return int(current_max) + 1
+
+
+def _get_max_enfants_par_parent(db: Session) -> int:
+    rec = db.query(AppSetting).filter(AppSetting.key == SETTINGS_KEY).first()
+    if not rec:
+        return DEFAULT_MAX_ENFANTS_PAR_PARENT
+    try:
+        payload = json.loads(rec.value)
+        val = payload.get("maxEnfantsParParent", DEFAULT_MAX_ENFANTS_PAR_PARENT)
+        if val is None:
+            return 999999
+        max_val = int(val)
+        return max_val if max_val > 0 else DEFAULT_MAX_ENFANTS_PAR_PARENT
+    except Exception:
+        return DEFAULT_MAX_ENFANTS_PAR_PARENT
 
 
 def _compute_target_liste_code(*, parent_id: int, lien_parente: LienParente, is_first_child: bool) -> ListeCode:
@@ -110,12 +129,13 @@ def create_inscription_for_parent_user(
             svc = _get_or_create_service(db, parent_service_nom)
             parent.service_id = svc.id
 
-    # Limite : 2 enfants max par parent
+    max_enfants = _get_max_enfants_par_parent(db)
+    # Limite dynamique pilotée par le super admin
     nb_enfants = db.query(func.count(Enfant.id)).filter(Enfant.parent_id == parent.id).scalar() or 0
-    if nb_enfants >= 2:
+    if nb_enfants >= max_enfants:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inscription impossible : vous avez déjà inscrit 2 enfants (maximum autorisé).",
+            detail=f"Inscription impossible : vous avez déjà inscrit {max_enfants} enfants (maximum autorisé).",
         )
 
     is_first_child = nb_enfants == 0

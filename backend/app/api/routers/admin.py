@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -8,10 +9,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_roles
+from app.api.deps import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.enums import DemandeStatut, ListeCode, UserRole
-from app.models.models import DemandeInscription, Desistement, Enfant, Liste, Parent, User
+from app.models.models import AppSetting, DemandeInscription, Desistement, Enfant, Liste, Parent, Site, User
 from app.services.email import send_email, uniq_emails
 from app.services.email_templates import (
     body_desistement_validated,
@@ -23,6 +24,37 @@ from app.services.email_templates import (
 from app.services.inscriptions import ensure_listes_exist
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+SETTINGS_KEY = "runtime_settings"
+
+
+class RuntimeSettingsIn(BaseModel):
+    colonieNom: str = Field(default="Colonie de Vacances 2026")
+    dateDebutInscriptions: str = Field(default="2026-01-01")
+    dateFinInscriptions: str = Field(default="2026-04-30")
+    dateDebutColonie: str = Field(default="2026-07-01")
+    dateFinColonie: str = Field(default="2026-08-31")
+    capaciteMax: int | None = Field(default=100)
+    maxEnfantsParParent: int | None = Field(default=2)
+    ageMin: int = Field(default=2012)
+    ageMax: int = Field(default=2019)
+    inscriptionsOuvertes: bool = Field(default=True)
+
+
+def _default_runtime_settings() -> dict:
+    return RuntimeSettingsIn().model_dump()
+
+
+def _read_runtime_settings(db: Session) -> dict:
+    rec = db.query(AppSetting).filter(AppSetting.key == SETTINGS_KEY).first()
+    if not rec:
+        return _default_runtime_settings()
+    try:
+        raw = json.loads(rec.value)
+        if not isinstance(raw, dict):
+            return _default_runtime_settings()
+        return {**_default_runtime_settings(), **raw}
+    except Exception:
+        return _default_runtime_settings()
 
 
 class FinalSelectionIn(BaseModel):
@@ -41,6 +73,48 @@ class DesistementValidateIn(BaseModel):
 
 class SwapRangIn(BaseModel):
     other_demande_id: int
+
+
+@router.get("/settings")
+def get_runtime_settings(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return _read_runtime_settings(db)
+
+
+@router.put("/settings")
+def update_runtime_settings(
+    payload: RuntimeSettingsIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+):
+    rec = db.query(AppSetting).filter(AppSetting.key == SETTINGS_KEY).first()
+    data = payload.model_dump()
+    if rec is None:
+        rec = AppSetting(key=SETTINGS_KEY, value=json.dumps(data))
+        db.add(rec)
+    else:
+        rec.value = json.dumps(data)
+    db.commit()
+    return data
+
+
+@router.get("/sites")
+def list_sites(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    all_sites = db.query(Site).order_by(Site.nom.asc()).all()
+    return [
+        {
+            "id": s.id,
+            "nom": s.nom,
+            "code": s.code,
+            "description": s.description,
+        }
+        for s in all_sites
+    ]
 
 
 @router.get("/listes/{liste_code}/demandes")

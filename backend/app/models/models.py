@@ -145,3 +145,10 @@ class Desistement(Base):
     demande_inscription: Mapped["DemandeInscription"] = relationship(back_populates="desistement")
     validated_by: Mapped[Optional["User"]] = relationship(foreign_keys=[validated_by_user_id])
 
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+

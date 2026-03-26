@@ -126,10 +126,10 @@ export default function GestionListe({ type }: Props) {
   };
 
   const generateCSV = () => {
-    const headers = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Service', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', 'Décision', 'Désistement'];
+    const headers = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Service', 'Agence', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', 'Décision', 'Désistement'];
     const rows = filteredEnfants.map(e => {
       const p = parents.find(x => x.matricule === e.parentMatricule);
-      return [getRangDansListe(e.id), e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, e.validation || 'en_attente', e.desistement || 'Aucun'];
+      return [getRangDansListe(e.id), e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', p?.site || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, e.validation || 'en_attente', e.desistement || 'Aucun'];
     });
     return { headers, rows };
   };
@@ -215,6 +215,7 @@ export default function GestionListe({ type }: Props) {
                 <TableHead className="font-semibold">Nom du parent</TableHead>
                 <TableHead className="font-semibold">Prénom du parent</TableHead>
                 <TableHead className="font-semibold">Service</TableHead>
+                <TableHead className="font-semibold">Agence</TableHead>
                 <TableHead className="font-semibold">Prénom Enfant</TableHead>
                 <TableHead className="font-semibold">Nom Enfant</TableHead>
                 <TableHead className="font-semibold">Âge</TableHead>
@@ -226,7 +227,7 @@ export default function GestionListe({ type }: Props) {
             </TableHeader>
             <TableBody>
               {filteredEnfants.length === 0 ? (
-                <TableRow><TableCell colSpan={12} className="text-center py-12 text-muted-foreground">Aucun enfant dans cette liste</TableCell></TableRow>
+                <TableRow><TableCell colSpan={13} className="text-center py-12 text-muted-foreground">Aucun enfant dans cette liste</TableCell></TableRow>
               ) : (
                 filteredEnfants.map(e => {
                   const p = parents.find(x => x.matricule === e.parentMatricule);
@@ -239,6 +240,7 @@ export default function GestionListe({ type }: Props) {
                       <TableCell>{p?.nom || '—'}</TableCell>
                       <TableCell>{p?.prenom || '—'}</TableCell>
                       <TableCell className="text-sm">{p?.service || '—'}</TableCell>
+                      <TableCell className="text-sm">{p?.site || '—'}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           {e.prenom}
