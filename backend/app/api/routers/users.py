@@ -23,6 +23,7 @@ from app.services.users import (
     change_password_self,
     create_user_superadmin,
     delete_admin_user,
+    delete_user_by_super_admin,
     set_admin_temp_password,
     set_user_active,
     update_user,
@@ -187,7 +188,7 @@ def delete_user(
     db: Session = Depends(get_db),
     admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
-    delete_admin_user(db, user_id=user_id, requester_id=admin.id)
+    delete_user_by_super_admin(db, user_id=user_id, requester_id=admin.id)
     db.commit()
     return {"ok": True}
 

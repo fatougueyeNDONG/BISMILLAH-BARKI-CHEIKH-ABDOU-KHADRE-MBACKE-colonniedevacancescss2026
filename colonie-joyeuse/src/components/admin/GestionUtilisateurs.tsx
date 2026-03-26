@@ -566,8 +566,8 @@ export default function GestionUtilisateurs() {
                           const token = getToken();
                           if (!token) return;
                           void (async () => {
-                            const response = await fetch(`${API_BASE_URL}/admin/users/${p.id}/deactivate`, {
-                              method: 'POST',
+                            const response = await fetch(`${API_BASE_URL}/admin/users/${p.id}`, {
+                              method: 'DELETE',
                               headers: { Authorization: `Bearer ${token}` },
                             });
                             if (!response.ok) {

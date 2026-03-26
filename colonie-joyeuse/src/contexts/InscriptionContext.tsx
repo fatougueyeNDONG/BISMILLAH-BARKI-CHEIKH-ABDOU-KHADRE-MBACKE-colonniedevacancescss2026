@@ -102,6 +102,15 @@ const mapDemandeToEnfant = (demande: DemandeApi, parentMatricule: string): Enfan
   motifRefus: demande.non_validation_reason || undefined,
 });
 
+const getRoleFromToken = (token: string): string | null => {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1] || ''));
+    return String(payload?.role || '').toUpperCase();
+  } catch {
+    return null;
+  }
+};
+
 export function InscriptionProvider({ children }: { children: ReactNode }) {
   const [enfants, setEnfants] = useState<Enfant[]>([]);
   const [parents, setParents] = useState<Parent[]>([]);
@@ -126,6 +135,8 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
   const refreshDemandes = async () => {
     const token = getToken();
     if (!token) return;
+    const role = getRoleFromToken(token);
+    if (role !== 'PARENT') return;
     try {
       const response = await apiFetch('/parent/demandes');
       const data = (await response.json()) as DemandeApi[];

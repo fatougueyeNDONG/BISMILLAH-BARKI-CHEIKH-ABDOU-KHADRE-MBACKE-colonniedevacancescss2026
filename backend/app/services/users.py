@@ -145,6 +145,35 @@ def delete_admin_user(db: Session, *, user_id: int, requester_id: int) -> None:
     db.flush()
 
 
+def delete_user_by_super_admin(db: Session, *, user_id: int, requester_id: int) -> None:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable.")
+
+    if user.id == requester_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vous ne pouvez pas supprimer votre propre compte.")
+
+    if user.role in {UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN}:
+        delete_admin_user(db, user_id=user_id, requester_id=requester_id)
+        return
+
+    if user.role == UserRole.PARENT:
+        parent = db.query(Parent).filter(Parent.user_id == user.id).first()
+        if parent and parent.enfants:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Suppression impossible: ce parent a deja des enfants/inscriptions.",
+            )
+        if parent:
+            db.delete(parent)
+            db.flush()
+        db.delete(user)
+        db.flush()
+        return
+
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role non supporte pour suppression.")
+
+
 def update_user(
     db: Session,
     *,
