@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { AdminUser, MOCK_ADMIN_USERS, Parent, MOCK_SITES } from '@/data/mockData';
+import { AdminUser, Parent, MOCK_SITES } from '@/data/mockData';
 import { useInscription } from '@/contexts/InscriptionContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,8 @@ import ImportExcel from './ImportExcel';
 
 export default function GestionUtilisateurs() {
   const { parents, addParent, updateParent, removeParent } = useInscription();
-  const [admins, setAdmins] = useState<AdminUser[]>([...MOCK_ADMIN_USERS]);
+  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
@@ -50,6 +51,42 @@ export default function GestionUtilisateurs() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importExcelOpen, setImportExcelOpen] = useState(false);
 
+  const getToken = () => localStorage.getItem('access_token');
+
+  const fetchAdmins = async () => {
+    const token = getToken();
+    if (!token) return;
+    const response = await fetch(`${API_BASE_URL}/admin/users`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    if (!Array.isArray(data)) return;
+    const mapped: AdminUser[] = data
+      .filter((u: any) => u.role === 'GESTIONNAIRE' || u.role === 'SUPER_ADMIN')
+      .map((u: any) => {
+        const fullName = String(u.name || '').trim();
+        const parts = fullName.split(/\s+/);
+        const prenom = parts[0] || '';
+        const nom = parts.slice(1).join(' ') || '';
+        return {
+          id: String(u.id),
+          email: String(u.email || ''),
+          nom,
+          prenom,
+          role: u.role === 'SUPER_ADMIN' ? 'super_admin' : 'gestionnaire',
+          actif: Boolean(u.is_active),
+          dateCreation: '',
+          motDePasse: '',
+        };
+      });
+    setAdmins(mapped);
+  };
+
+  useEffect(() => {
+    void fetchAdmins();
+  }, []);
+
   const handleImportParents = (data: any[]) => {
     let success = 0;
     const errors: { ligne: number; message: string }[] = [];
@@ -68,64 +105,142 @@ export default function GestionUtilisateurs() {
     return { success, errors };
   };
 
-  const handleImportAdmins = (data: any[]) => {
+  const handleImportAdmins = async (data: any[]) => {
     let success = 0;
     const errors: { ligne: number; message: string }[] = [];
-    data.forEach((row, i) => {
+    const token = getToken();
+    if (!token) {
+      return { success: 0, errors: [{ ligne: 1, message: 'Session expirée. Reconnectez-vous.' }] };
+    }
+    for (let i = 0; i < data.length; i += 1) {
+      const row = data[i];
       if (!row.email || !row.prenom || !row.nom || !row.role) {
         errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (email, prenom, nom, role)' });
-        return;
+        continue;
       }
       const role = row.role.toLowerCase().trim();
       if (role !== 'gestionnaire' && role !== 'super_admin') {
         errors.push({ ligne: i + 2, message: `Rôle invalide "${row.role}" (gestionnaire ou super_admin)` });
-        return;
+        continue;
       }
-      if (admins.some(a => a.email === row.email)) {
-        errors.push({ ligne: i + 2, message: `Email "${row.email}" déjà existant` });
-        return;
+      try {
+        const response = await fetch(`${API_BASE_URL}/admin/users`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            role: role === 'super_admin' ? 'SUPER_ADMIN' : 'GESTIONNAIRE',
+            name: `${row.prenom} ${row.nom}`.trim(),
+            email: row.email,
+            password: 'admin12345',
+          }),
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          errors.push({ ligne: i + 2, message: payload?.detail || 'Erreur backend' });
+          continue;
+        }
+        success++;
+      } catch {
+        errors.push({ ligne: i + 2, message: 'Impossible de joindre le backend' });
       }
-      setAdmins(prev => [...prev, { id: `a_${Date.now()}_${i}`, email: row.email, prenom: row.prenom, nom: row.nom, role: role as 'gestionnaire' | 'super_admin', actif: true, dateCreation: new Date().toISOString().split('T')[0], motDePasse: 'admin123', telephone: row.telephone || '' }]);
-      success++;
-    });
+    }
+    await fetchAdmins();
     return { success, errors };
   };
 
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newEmail || !newNom || !newPrenom) return;
-    setAdmins(prev => [...prev, {
-      id: `a_${Date.now()}`,
-      email: newEmail, nom: newNom, prenom: newPrenom,
-      role: newRole, actif: true,
-      dateCreation: new Date().toISOString().split('T')[0],
-      motDePasse: newPassword, telephone: newTelephone,
-    }]);
+    const token = getToken();
+    if (!token) return;
+    const response = await fetch(`${API_BASE_URL}/admin/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        role: newRole === 'super_admin' ? 'SUPER_ADMIN' : 'GESTIONNAIRE',
+        name: `${newPrenom} ${newNom}`.trim(),
+        email: newEmail,
+        password: newPassword || 'admin12345',
+      }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      toast({ title: "Erreur de création", description: data?.detail || 'Impossible de créer', variant: 'destructive' });
+      return;
+    }
+    await fetchAdmins();
     setCreateOpen(false);
     setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewPassword('admin123'); setNewTelephone('');
     toast({ title: '✅ Administrateur créé' });
   };
 
-  const handleDelete = (id: string) => {
-    setAdmins(prev => prev.filter(a => a.id !== id));
-    toast({ title: '🗑️ Utilisateur supprimé', variant: 'destructive' });
+  const handleDelete = async (id: string) => {
+    const token = getToken();
+    if (!token) return;
+    const response = await fetch(`${API_BASE_URL}/admin/users/${id}/deactivate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      toast({ title: "Erreur de suppression", description: data?.detail || 'Impossible de désactiver', variant: 'destructive' });
+      return;
+    }
+    await fetchAdmins();
+    toast({ title: '🗑️ Utilisateur désactivé', variant: 'destructive' });
   };
 
-  const handleToggleActif = (id: string) => {
-    setAdmins(prev => prev.map(a => {
-      if (a.id === id) {
-        toast({ title: !a.actif ? '✅ Activé' : '⚠️ Désactivé' });
-        return { ...a, actif: !a.actif };
-      }
-      return a;
-    }));
+  const handleToggleActif = async (id: string) => {
+    const token = getToken();
+    if (!token) return;
+    const current = admins.find((a) => a.id === id);
+    if (!current) return;
+    const response = await fetch(`${API_BASE_URL}/admin/users/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ is_active: !current.actif }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      toast({ title: 'Erreur', description: data?.detail || 'Impossible de modifier le statut', variant: 'destructive' });
+      return;
+    }
+    await fetchAdmins();
+    toast({ title: !current.actif ? '✅ Activé' : '⚠️ Désactivé' });
   };
 
   const openEdit = (admin: AdminUser) => { setEditingAdmin({ ...admin }); setEditOpen(true); };
 
-  const handleEdit = () => {
+  const handleEdit = async () => {
     if (!editingAdmin) return;
-    setAdmins(prev => prev.map(a => a.id === editingAdmin.id ? editingAdmin : a));
+    const token = getToken();
+    if (!token) return;
+    const response = await fetch(`${API_BASE_URL}/admin/users/${editingAdmin.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: `${editingAdmin.prenom} ${editingAdmin.nom}`.trim(),
+        email: editingAdmin.email,
+      }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      toast({ title: 'Erreur', description: data?.detail || 'Impossible de modifier', variant: 'destructive' });
+      return;
+    }
+    await fetchAdmins();
     setEditOpen(false);
     toast({ title: '✅ Modifié' });
   };
@@ -169,7 +284,27 @@ export default function GestionUtilisateurs() {
   const handleResetPassword = () => {
     if (!resetPwdTarget || !resetNewPwd) return;
     if (resetPwdTarget.type === 'admin') {
-      setAdmins(prev => prev.map(a => a.id === resetPwdTarget.id ? { ...a, motDePasse: resetNewPwd } : a));
+      const token = getToken();
+      if (!token) return;
+      void (async () => {
+        const response = await fetch(`${API_BASE_URL}/admin/users/${resetPwdTarget.id}/reset-password`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ new_password: resetNewPwd }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          toast({ title: 'Erreur', description: data?.detail || 'Impossible de réinitialiser', variant: 'destructive' });
+          return;
+        }
+        setResetPwdOpen(false);
+        setResetNewPwd('');
+        toast({ title: '✅ Mot de passe réinitialisé' });
+      })();
+      return;
     } else {
       updateParent(resetPwdTarget.id, { motDePasse: resetNewPwd });
     }
