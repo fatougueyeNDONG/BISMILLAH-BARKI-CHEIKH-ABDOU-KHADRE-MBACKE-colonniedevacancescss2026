@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { AdminUser, Parent } from '@/data/mockData';
+import { AdminUser, MOCK_ADMIN_USERS, Parent, MOCK_SITES } from '@/data/mockData';
 import { useInscription } from '@/contexts/InscriptionContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,8 @@ import { toast } from '@/hooks/use-toast';
 import ImportExcel from './ImportExcel';
 
 export default function GestionUtilisateurs() {
-  const { parents } = useInscription();
-  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
-  type ParentRow = Parent & { id: string };
-  const [admins, setAdmins] = useState<AdminUser[]>([]);
-  const [parentRows, setParentRows] = useState<ParentRow[]>([]);
-  const [sites, setSites] = useState<Array<{ id: string; code: string; nom: string }>>([]);
+  const { parents, addParent, updateParent, removeParent } = useInscription();
+  const [admins, setAdmins] = useState<AdminUser[]>([...MOCK_ADMIN_USERS]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
@@ -28,6 +24,7 @@ export default function GestionUtilisateurs() {
   const [newNom, setNewNom] = useState('');
   const [newPrenom, setNewPrenom] = useState('');
   const [newRole, setNewRole] = useState<'gestionnaire' | 'super_admin'>('gestionnaire');
+  const [newPassword, setNewPassword] = useState('admin123');
   const [newTelephone, setNewTelephone] = useState('');
 
   // Parent creation
@@ -36,13 +33,14 @@ export default function GestionUtilisateurs() {
   const [newParentPrenom, setNewParentPrenom] = useState('');
   const [newParentNom, setNewParentNom] = useState('');
   const [newParentService, setNewParentService] = useState('');
+  const [newParentPassword, setNewParentPassword] = useState('parent123');
   const [newParentEmail, setNewParentEmail] = useState('');
   const [newParentTelephone, setNewParentTelephone] = useState('');
   const [newParentSite, setNewParentSite] = useState('');
 
   // Edit parent
   const [editParentOpen, setEditParentOpen] = useState(false);
-  const [editingParent, setEditingParent] = useState<ParentRow | null>(null);
+  const [editingParent, setEditingParent] = useState<Parent | null>(null);
 
   // Reset password
   const [resetPwdOpen, setResetPwdOpen] = useState(false);
@@ -52,344 +50,99 @@ export default function GestionUtilisateurs() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importExcelOpen, setImportExcelOpen] = useState(false);
 
-  const getToken = () => localStorage.getItem('access_token');
-
-  const fetchAdmins = async () => {
-    const token = getToken();
-    if (!token) return;
-    const response = await fetch(`${API_BASE_URL}/admin/users`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) return;
-    const data = await response.json();
-    if (!Array.isArray(data)) return;
-    const mapped: AdminUser[] = data
-      .filter((u: any) => u.role === 'GESTIONNAIRE' || u.role === 'SUPER_ADMIN')
-      .map((u: any) => {
-        const fullName = String(u.name || '').trim();
-        const parts = fullName.split(/\s+/);
-        const prenom = parts[0] || '';
-        const nom = parts.slice(1).join(' ') || '';
-        return {
-          id: String(u.id),
-          email: String(u.email || ''),
-          nom,
-          prenom,
-          role: u.role === 'SUPER_ADMIN' ? 'super_admin' : 'gestionnaire',
-          actif: Boolean(u.is_active),
-          dateCreation: '',
-          motDePasse: '',
-        };
-      });
-    setAdmins(mapped);
-  };
-
-  const fetchParents = async () => {
-    const token = getToken();
-    if (!token) return;
-    const response = await fetch(`${API_BASE_URL}/admin/users`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) return;
-    const data = await response.json();
-    if (!Array.isArray(data)) return;
-    const mapped: ParentRow[] = data
-      .filter((u: any) => u.role === 'PARENT' && Boolean(u.is_active))
-      .map((u: any) => {
-        const prenom = String(u.parent_prenom || '').trim();
-        const nom = String(u.parent_nom || '').trim();
-        const fullName = String(u.name || '').trim();
-        const parts = fullName.split(/\s+/);
-        return {
-          id: String(u.id),
-          matricule: String(u.matricule || ''),
-          prenom: prenom || parts[0] || '',
-          nom: nom || parts.slice(1).join(' ') || '',
-          service: String(u.parent_service || ''),
-          site: undefined,
-          email: String(u.email || ''),
-          telephone: undefined,
-          motDePasse: '',
-          premiereConnexion: false,
-        };
-      });
-    setParentRows(mapped);
-  };
-
-  const fetchSites = async () => {
-    const token = getToken();
-    if (!token) return;
-    const response = await fetch(`${API_BASE_URL}/admin/sites`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) return;
-    const data = await response.json().catch(() => []);
-    if (!Array.isArray(data)) return;
-    const mapped = data.map((s: any) => ({
-      id: String(s.id ?? ''),
-      code: String(s.code ?? ''),
-      nom: String(s.nom ?? ''),
-    })).filter((s: { code: string; nom: string }) => s.code && s.nom);
-    setSites(mapped);
-  };
-
-  useEffect(() => {
-    void fetchAdmins();
-    void fetchParents();
-    void fetchSites();
-  }, []);
-
-  const handleImportParents = async (data: any[]) => {
+  const handleImportParents = (data: any[]) => {
     let success = 0;
     const errors: { ligne: number; message: string }[] = [];
-    const token = getToken();
-    if (!token) {
-      return { success: 0, errors: [{ ligne: 1, message: 'Session expirée. Reconnectez-vous.' }] };
-    }
     data.forEach((row, i) => {
       if (!row.matricule || !row.prenom || !row.nom || !row.service) {
         errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (matricule, prenom, nom, service)' });
+        return;
       }
+      if (parents.some(p => p.matricule === row.matricule)) {
+        errors.push({ ligne: i + 2, message: `Matricule "${row.matricule}" déjà existant` });
+        return;
+      }
+      addParent({ matricule: row.matricule, prenom: row.prenom, nom: row.nom, service: row.service, site: row.site || undefined, email: row.email || undefined, telephone: row.telephone || undefined, motDePasse: 'parent123', premiereConnexion: true });
+      success++;
     });
-    for (let i = 0; i < data.length; i += 1) {
-      const row = data[i];
-      if (!row.matricule || !row.prenom || !row.nom || !row.service) continue;
-      try {
-        const response = await fetch(`${API_BASE_URL}/admin/users`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            role: 'PARENT',
-            name: `${row.prenom} ${row.nom}`.trim(),
-            matricule: row.matricule,
-            prenom: row.prenom,
-            nom: row.nom,
-            service: row.service,
-            site_code: row.site || undefined,
-            email: row.email || undefined,
-            password: row.password || 'Passer123',
-          }),
-        });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          errors.push({ ligne: i + 2, message: payload?.detail || 'Erreur backend' });
-          continue;
-        }
-        success++;
-      } catch {
-        errors.push({ ligne: i + 2, message: 'Impossible de joindre le backend' });
-      }
-    }
-    await fetchParents();
     return { success, errors };
   };
 
-  const handleImportAdmins = async (data: any[]) => {
+  const handleImportAdmins = (data: any[]) => {
     let success = 0;
     const errors: { ligne: number; message: string }[] = [];
-    const token = getToken();
-    if (!token) {
-      return { success: 0, errors: [{ ligne: 1, message: 'Session expirée. Reconnectez-vous.' }] };
-    }
-    for (let i = 0; i < data.length; i += 1) {
-      const row = data[i];
+    data.forEach((row, i) => {
       if (!row.email || !row.prenom || !row.nom || !row.role) {
         errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (email, prenom, nom, role)' });
-        continue;
+        return;
       }
       const role = row.role.toLowerCase().trim();
       if (role !== 'gestionnaire' && role !== 'super_admin') {
         errors.push({ ligne: i + 2, message: `Rôle invalide "${row.role}" (gestionnaire ou super_admin)` });
-        continue;
+        return;
       }
-      try {
-        const response = await fetch(`${API_BASE_URL}/admin/users`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            role: role === 'super_admin' ? 'SUPER_ADMIN' : 'GESTIONNAIRE',
-            name: `${row.prenom} ${row.nom}`.trim(),
-            email: row.email,
-            password: 'admin12345',
-          }),
-        });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          errors.push({ ligne: i + 2, message: payload?.detail || 'Erreur backend' });
-          continue;
-        }
-        success++;
-      } catch {
-        errors.push({ ligne: i + 2, message: 'Impossible de joindre le backend' });
+      if (admins.some(a => a.email === row.email)) {
+        errors.push({ ligne: i + 2, message: `Email "${row.email}" déjà existant` });
+        return;
       }
-    }
-    await fetchAdmins();
+      setAdmins(prev => [...prev, { id: `a_${Date.now()}_${i}`, email: row.email, prenom: row.prenom, nom: row.nom, role: role as 'gestionnaire' | 'super_admin', actif: true, dateCreation: new Date().toISOString().split('T')[0], motDePasse: 'admin123', telephone: row.telephone || '' }]);
+      success++;
+    });
     return { success, errors };
   };
 
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     if (!newEmail || !newNom || !newPrenom) return;
-    const token = getToken();
-    if (!token) return;
-    const response = await fetch(`${API_BASE_URL}/admin/users`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        role: newRole === 'super_admin' ? 'SUPER_ADMIN' : 'GESTIONNAIRE',
-        name: `${newPrenom} ${newNom}`.trim(),
-        email: newEmail,
-      }),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      toast({ title: "Erreur de création", description: data?.detail || 'Impossible de créer', variant: 'destructive' });
-      return;
-    }
-    await fetchAdmins();
+    setAdmins(prev => [...prev, {
+      id: `a_${Date.now()}`,
+      email: newEmail, nom: newNom, prenom: newPrenom,
+      role: newRole, actif: true,
+      dateCreation: new Date().toISOString().split('T')[0],
+      motDePasse: newPassword, telephone: newTelephone,
+    }]);
     setCreateOpen(false);
-    setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewTelephone('');
+    setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewPassword('admin123'); setNewTelephone('');
     toast({ title: '✅ Administrateur créé' });
   };
 
-  const handleDelete = async (id: string) => {
-    const token = getToken();
-    if (!token) return;
-    const response = await fetch(`${API_BASE_URL}/admin/users/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      toast({ title: "Erreur de suppression", description: data?.detail || 'Impossible de désactiver', variant: 'destructive' });
-      return;
-    }
-    setAdmins((prev) => prev.filter((a) => a.id !== id));
-    toast({ title: '🗑️ Administrateur supprimé', variant: 'destructive' });
+  const handleDelete = (id: string) => {
+    setAdmins(prev => prev.filter(a => a.id !== id));
+    toast({ title: '🗑️ Utilisateur supprimé', variant: 'destructive' });
   };
 
-  const handleToggleActif = async (id: string) => {
-    const token = getToken();
-    if (!token) return;
-    const current = admins.find((a) => a.id === id);
-    if (!current) return;
-    const response = await fetch(`${API_BASE_URL}/admin/users/${id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ is_active: !current.actif }),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      toast({ title: 'Erreur', description: data?.detail || 'Impossible de modifier le statut', variant: 'destructive' });
-      return;
-    }
-    await fetchAdmins();
-    toast({ title: !current.actif ? '✅ Activé' : '⚠️ Désactivé' });
+  const handleToggleActif = (id: string) => {
+    setAdmins(prev => prev.map(a => {
+      if (a.id === id) {
+        toast({ title: !a.actif ? '✅ Activé' : '⚠️ Désactivé' });
+        return { ...a, actif: !a.actif };
+      }
+      return a;
+    }));
   };
 
   const openEdit = (admin: AdminUser) => { setEditingAdmin({ ...admin }); setEditOpen(true); };
 
-  const handleEdit = async () => {
+  const handleEdit = () => {
     if (!editingAdmin) return;
-    const token = getToken();
-    if (!token) return;
-    const response = await fetch(`${API_BASE_URL}/admin/users/${editingAdmin.id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        name: `${editingAdmin.prenom} ${editingAdmin.nom}`.trim(),
-        email: editingAdmin.email,
-        role: editingAdmin.role === 'super_admin' ? 'SUPER_ADMIN' : 'GESTIONNAIRE',
-      }),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      toast({ title: 'Erreur', description: data?.detail || 'Impossible de modifier', variant: 'destructive' });
-      return;
-    }
-    await fetchAdmins();
+    setAdmins(prev => prev.map(a => a.id === editingAdmin.id ? editingAdmin : a));
     setEditOpen(false);
     toast({ title: '✅ Modifié' });
   };
 
   const handleCreateParent = () => {
-    if (!newParentMatricule || !newParentPrenom || !newParentNom || !newParentService || !newParentSite || !newParentTelephone) {
-      toast({ title: 'Champs obligatoires', description: 'Matricule, Prénom, Nom, Service, Site et Téléphone sont obligatoires.', variant: 'destructive' });
-      return;
-    }
-    const token = getToken();
-    if (!token) return;
-    void (async () => {
-      const response = await fetch(`${API_BASE_URL}/admin/users`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          role: 'PARENT',
-          name: `${newParentPrenom} ${newParentNom}`.trim(),
-          matricule: newParentMatricule,
-          prenom: newParentPrenom,
-          nom: newParentNom,
-          service: newParentService,
-          site_code: newParentSite || undefined,
-          email: newParentEmail || undefined,
-          password: 'Passer123',
-        }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        toast({ title: 'Erreur', description: data?.detail || 'Impossible de créer le parent', variant: 'destructive' });
-        return;
-      }
-      await fetchParents();
-      setCreateParentOpen(false);
-      setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
-      toast({ title: '✅ Parent créé' });
-    })();
+    if (!newParentMatricule || !newParentPrenom || !newParentNom || !newParentService) return;
+    addParent({ matricule: newParentMatricule, prenom: newParentPrenom, nom: newParentNom, service: newParentService, site: newParentSite || undefined, motDePasse: newParentPassword, email: newParentEmail, telephone: newParentTelephone, premiereConnexion: true });
+    setCreateParentOpen(false);
+    setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentPassword('parent123'); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
+    toast({ title: '✅ Parent créé' });
   };
 
   const handleEditParent = () => {
     if (!editingParent) return;
-    const token = getToken();
-    if (!token) return;
-    void (async () => {
-      const response = await fetch(`${API_BASE_URL}/admin/users/${editingParent.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: `${editingParent.prenom} ${editingParent.nom}`.trim(),
-          email: editingParent.email || null,
-        }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        toast({ title: 'Erreur', description: data?.detail || 'Impossible de modifier', variant: 'destructive' });
-        return;
-      }
-      await fetchParents();
-      setEditParentOpen(false);
-      toast({ title: '✅ Parent modifié' });
-    })();
+    updateParent(editingParent.matricule, editingParent);
+    setEditParentOpen(false);
+    toast({ title: '✅ Parent modifié' });
   };
 
   const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -403,7 +156,7 @@ export default function GestionUtilisateurs() {
       lines.forEach(line => {
         const [matricule, prenom, nom, service] = line.split(',').map(s => s.trim());
         if (matricule && prenom && nom && service) {
-          setParentRows((prev) => [...prev, { id: `${Date.now()}-${matricule}`, matricule, prenom, nom, service, motDePasse: 'parent123' } as ParentRow]);
+          addParent({ matricule, prenom, nom, service, motDePasse: 'parent123' });
           count++;
         }
       });
@@ -414,51 +167,15 @@ export default function GestionUtilisateurs() {
   };
 
   const handleResetPassword = () => {
-    if (!resetPwdTarget) return;
+    if (!resetPwdTarget || !resetNewPwd) return;
     if (resetPwdTarget.type === 'admin') {
-      const token = getToken();
-      if (!token) return;
-      void (async () => {
-        const response = await fetch(`${API_BASE_URL}/admin/users/${resetPwdTarget.id}/reset-password-auto`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          toast({ title: 'Erreur', description: data?.detail || 'Impossible de réinitialiser', variant: 'destructive' });
-          return;
-        }
-        setResetPwdOpen(false);
-        setResetNewPwd('');
-        toast({ title: '✅ Mot de passe temporaire envoyé par email' });
-      })();
-      return;
+      setAdmins(prev => prev.map(a => a.id === resetPwdTarget.id ? { ...a, motDePasse: resetNewPwd } : a));
+    } else {
+      updateParent(resetPwdTarget.id, { motDePasse: resetNewPwd });
     }
-    if (!resetNewPwd) return;
-    {
-      const token = getToken();
-      if (!token) return;
-      void (async () => {
-        const response = await fetch(`${API_BASE_URL}/admin/users/${resetPwdTarget.id}/reset-password`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ new_password: resetNewPwd }),
-        });
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          toast({ title: 'Erreur', description: data?.detail || 'Impossible de réinitialiser', variant: 'destructive' });
-          return;
-        }
-        setResetPwdOpen(false);
-        setResetNewPwd('');
-        toast({ title: '✅ Mot de passe réinitialisé' });
-      })();
-    }
+    setResetPwdOpen(false);
+    setResetNewPwd('');
+    toast({ title: '✅ Mot de passe réinitialisé' });
   };
 
   return (
@@ -546,39 +263,21 @@ export default function GestionUtilisateurs() {
                   <TableHead className="font-semibold">Nom</TableHead>
                   <TableHead className="font-semibold">Prénom</TableHead>
                   <TableHead className="font-semibold">Service</TableHead>
-                  <TableHead className="font-semibold">Agence</TableHead>
                   <TableHead className="font-semibold">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {parentRows.map(p => (
-                  <TableRow key={p.id}>
+                {parents.map(p => (
+                  <TableRow key={p.matricule}>
                     <TableCell className="font-mono tabular-nums text-sm">{p.matricule}</TableCell>
                     <TableCell className="font-medium">{p.nom}</TableCell>
                     <TableCell>{p.prenom}</TableCell>
                     <TableCell className="text-sm">{p.service}</TableCell>
-                    <TableCell className="text-sm">{p.site || '—'}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button size="sm" variant="ghost" onClick={() => { setEditingParent({ ...p }); setEditParentOpen(true); }} className="h-8 w-8 p-0"><Pencil className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => { setResetPwdTarget({ type: 'parent', id: p.id, name: `${p.prenom} ${p.nom}` }); setResetPwdOpen(true); }} className="h-8 w-8 p-0"><KeyRound className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => {
-                          const token = getToken();
-                          if (!token) return;
-                          void (async () => {
-                            const response = await fetch(`${API_BASE_URL}/admin/users/${p.id}`, {
-                              method: 'DELETE',
-                              headers: { Authorization: `Bearer ${token}` },
-                            });
-                            if (!response.ok) {
-                              const data = await response.json().catch(() => ({}));
-                              toast({ title: 'Erreur', description: data?.detail || 'Impossible de supprimer', variant: 'destructive' });
-                              return;
-                            }
-                            await fetchParents();
-                            toast({ title: '🗑️ Parent supprimé', variant: 'destructive' });
-                          })();
-                        }} className="h-8 w-8 p-0 text-destructive hover:text-destructive"><Trash2 className="w-3 h-3" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setResetPwdTarget({ type: 'parent', id: p.matricule, name: `${p.prenom} ${p.nom}` }); setResetPwdOpen(true); }} className="h-8 w-8 p-0"><KeyRound className="w-3 h-3" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => { removeParent(p.matricule); toast({ title: '🗑️ Parent supprimé', variant: 'destructive' }); }} className="h-8 w-8 p-0 text-destructive hover:text-destructive"><Trash2 className="w-3 h-3" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -605,6 +304,7 @@ export default function GestionUtilisateurs() {
             </div>
             <div className="space-y-2"><Label>Email</Label><Input value={newEmail} onChange={e => setNewEmail(e.target.value)} type="email" className="rounded-lg" /></div>
             <div className="space-y-2"><Label>Téléphone</Label><Input value={newTelephone} onChange={e => setNewTelephone(e.target.value)} placeholder="77 123 45 67" className="rounded-lg" /></div>
+            <div className="space-y-2"><Label>Mot de passe</Label><Input value={newPassword} onChange={e => setNewPassword(e.target.value)} type="password" className="rounded-lg" /></div>
             <div className="space-y-2">
               <Label>Rôle</Label>
               <Select value={newRole} onValueChange={(v: any) => setNewRole(v)}>
@@ -615,9 +315,6 @@ export default function GestionUtilisateurs() {
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Le mot de passe temporaire est généré automatiquement et envoyé par email. Le changement est obligatoire à la première connexion.
-            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} className="rounded-lg">Annuler</Button>
@@ -662,18 +359,18 @@ export default function GestionUtilisateurs() {
         <DialogContent className="sm:max-w-md rounded-xl">
           <DialogHeader><DialogTitle>Nouveau parent / Agent CSS</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2"><Label>Matricule *</Label><Input value={newParentMatricule} onChange={e => setNewParentMatricule(e.target.value)} placeholder="CSS-2024-XXX" className="rounded-lg" /></div>
+            <div className="space-y-2"><Label>Matricule</Label><Input value={newParentMatricule} onChange={e => setNewParentMatricule(e.target.value)} placeholder="CSS-2024-XXX" className="rounded-lg" /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Prénom *</Label><Input value={newParentPrenom} onChange={e => setNewParentPrenom(e.target.value)} className="rounded-lg" /></div>
-              <div className="space-y-2"><Label>Nom *</Label><Input value={newParentNom} onChange={e => setNewParentNom(e.target.value)} className="rounded-lg" /></div>
+              <div className="space-y-2"><Label>Prénom</Label><Input value={newParentPrenom} onChange={e => setNewParentPrenom(e.target.value)} className="rounded-lg" /></div>
+              <div className="space-y-2"><Label>Nom</Label><Input value={newParentNom} onChange={e => setNewParentNom(e.target.value)} className="rounded-lg" /></div>
             </div>
-            <div className="space-y-2"><Label>Service *</Label><Input value={newParentService} onChange={e => setNewParentService(e.target.value)} className="rounded-lg" /></div>
+            <div className="space-y-2"><Label>Service</Label><Input value={newParentService} onChange={e => setNewParentService(e.target.value)} className="rounded-lg" /></div>
             <div className="space-y-2">
-              <Label>Site *</Label>
+              <Label>Site</Label>
               <Select value={newParentSite} onValueChange={setNewParentSite}>
                 <SelectTrigger className="rounded-lg"><SelectValue placeholder="Sélectionner un site" /></SelectTrigger>
-                <SelectContent side="bottom" align="start" position="popper" className="max-h-64">
-                  {sites.map(s => (
+                <SelectContent>
+                  {MOCK_SITES.map(s => (
                     <SelectItem key={s.id} value={s.code}>{s.nom}</SelectItem>
                   ))}
                 </SelectContent>
@@ -681,11 +378,9 @@ export default function GestionUtilisateurs() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Email</Label><Input value={newParentEmail} onChange={e => setNewParentEmail(e.target.value)} type="email" className="rounded-lg" /></div>
-              <div className="space-y-2"><Label>Téléphone *</Label><Input value={newParentTelephone} onChange={e => setNewParentTelephone(e.target.value)} className="rounded-lg" /></div>
+              <div className="space-y-2"><Label>Téléphone</Label><Input value={newParentTelephone} onChange={e => setNewParentTelephone(e.target.value)} className="rounded-lg" /></div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Le mot de passe par défaut est <strong>Passer123</strong>. Le parent devra le changer à sa première connexion.
-            </p>
+            <div className="space-y-2"><Label>Mot de passe</Label><Input value={newParentPassword} onChange={e => setNewParentPassword(e.target.value)} type="password" className="rounded-lg" /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateParentOpen(false)} className="rounded-lg">Annuler</Button>
@@ -710,8 +405,8 @@ export default function GestionUtilisateurs() {
                 <Label>Site</Label>
                 <Select value={editingParent.site || ''} onValueChange={v => setEditingParent({ ...editingParent, site: v })}>
                   <SelectTrigger className="rounded-lg"><SelectValue placeholder="Sélectionner un site" /></SelectTrigger>
-                  <SelectContent side="bottom" align="start" position="popper" className="max-h-64">
-                    {sites.map(s => (
+                  <SelectContent>
+                    {MOCK_SITES.map(s => (
                       <SelectItem key={s.id} value={s.code}>{s.nom}</SelectItem>
                     ))}
                   </SelectContent>
@@ -736,19 +431,11 @@ export default function GestionUtilisateurs() {
           <DialogHeader>
             <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
           </DialogHeader>
-          {resetPwdTarget?.type === 'admin' ? (
-            <p className="text-sm text-muted-foreground">
-              Un mot de passe temporaire sera généré automatiquement et envoyé par email à <strong>{resetPwdTarget?.name}</strong>.
-            </p>
-          ) : (
-            <div>
-              <p className="text-sm text-muted-foreground">Nouveau mot de passe pour <strong>{resetPwdTarget?.name}</strong></p>
-              <div className="space-y-2 mt-2">
-                <Label>Nouveau mot de passe</Label>
-                <Input type="password" value={resetNewPwd} onChange={e => setResetNewPwd(e.target.value)} className="rounded-lg" />
-              </div>
-            </div>
-          )}
+          <p className="text-sm text-muted-foreground">Nouveau mot de passe pour <strong>{resetPwdTarget?.name}</strong></p>
+          <div className="space-y-2">
+            <Label>Nouveau mot de passe</Label>
+            <Input type="password" value={resetNewPwd} onChange={e => setResetNewPwd(e.target.value)} className="rounded-lg" />
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setResetPwdOpen(false)} className="rounded-lg">Annuler</Button>
             <Button onClick={handleResetPassword} className="rounded-lg bg-primary text-primary-foreground">Réinitialiser</Button>

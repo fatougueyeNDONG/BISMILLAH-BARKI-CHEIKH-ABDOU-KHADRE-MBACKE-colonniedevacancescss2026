@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,73 +17,32 @@ interface SiteConfig {
   description: string;
 }
 
+const INITIAL_SITES: SiteConfig[] = [
+  { id: 's1', nom: 'VDN', code: 'VDN', description: '' },
+  { id: 's2', nom: 'ZIGUINCHOR', code: 'ZIG', description: '' },
+  { id: 's3', nom: 'MBOUR', code: 'MBR', description: '' },
+];
+
 export default function GestionSites() {
-  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
-  const [sites, setSites] = useState<SiteConfig[]>([]);
+  const [sites, setSites] = useState<SiteConfig[]>([...INITIAL_SITES]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<SiteConfig | null>(null);
   const [form, setForm] = useState({ nom: '', code: '', description: '' });
   const [codeError, setCodeError] = useState('');
   const [importOpen, setImportOpen] = useState(false);
 
-  const fetchSites = async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    const response = await fetch(`${API_BASE_URL}/admin/sites`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) return;
-    const data = await response.json();
-    if (!Array.isArray(data)) return;
-    setSites(
-      data.map((s) => ({
-        id: String(s.id),
-        nom: String(s.nom),
-        code: String(s.code),
-        description: s.description ? String(s.description) : '',
-      })),
-    );
-  };
-
-  useEffect(() => {
-    void fetchSites();
-  }, []);
-
-  const handleImportSites = async (data: any[]) => {
+  const handleImportSites = (data: any[]) => {
     let success = 0;
     const errors: { ligne: number; message: string }[] = [];
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      return { success: 0, errors: [{ ligne: 1, message: 'Session expirée. Reconnectez-vous.' }] };
-    }
-    for (let i = 0; i < data.length; i += 1) {
-      const row = data[i];
-      if (!row.nom || !row.code) { errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (nom, code)' }); continue; }
+    const existingCodes = new Set(sites.map(s => s.code));
+    data.forEach((row, i) => {
+      if (!row.nom || !row.code) { errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (nom, code)' }); return; }
       const code = row.code.toUpperCase().replace(/\s/g, '');
-      try {
-        const response = await fetch(`${API_BASE_URL}/admin/sites`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            nom: row.nom,
-            code,
-            description: row.description || null,
-          }),
-        });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          errors.push({ ligne: i + 2, message: payload?.detail || 'Erreur backend' });
-          continue;
-        }
-        success++;
-      } catch {
-        errors.push({ ligne: i + 2, message: 'Impossible de joindre le backend' });
-      }
-    }
-    await fetchSites();
+      if (existingCodes.has(code)) { errors.push({ ligne: i + 2, message: `Code "${code}" déjà existant` }); return; }
+      existingCodes.add(code);
+      setSites(prev => [...prev, { id: `s_${Date.now()}_${i}`, nom: row.nom, code, description: row.description || '' }]);
+      success++;
+    });
     return { success, errors };
   };
 
@@ -108,7 +67,7 @@ export default function GestionSites() {
     setCodeError(isDuplicate ? 'Ce code existe déjà, veuillez en choisir un autre' : '');
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!form.nom.trim() || !form.code.trim()) {
       toast.error('Le nom et le code sont obligatoires');
       return;
@@ -122,62 +81,19 @@ export default function GestionSites() {
       toast.error('Ce code existe déjà, veuillez en choisir un autre');
       return;
     }
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      toast.error('Session expirée. Reconnectez-vous.');
-      return;
+    if (editingSite) {
+      setSites(prev => prev.map(s => s.id === editingSite.id ? { ...s, ...form } : s));
+      toast.success('Agence modifiée avec succès');
+    } else {
+      setSites(prev => [...prev, { id: `s_${Date.now()}`, ...form }]);
+      toast.success('Agence ajoutée avec succès');
     }
-    try {
-      const isEdit = !!editingSite;
-      const response = await fetch(
-        isEdit ? `${API_BASE_URL}/admin/sites/${editingSite!.id}` : `${API_BASE_URL}/admin/sites`,
-        {
-          method: isEdit ? 'PATCH' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            nom: form.nom.trim(),
-            code: form.code.trim().toUpperCase(),
-            description: form.description.trim() || null,
-          }),
-        },
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        toast.error(data?.detail || "Impossible d'enregistrer l'agence");
-        return;
-      }
-      await fetchSites();
-      toast.success(isEdit ? 'Agence modifiée avec succès' : 'Agence ajoutée avec succès');
-      setDialogOpen(false);
-    } catch {
-      toast.error("Impossible de joindre le backend");
-    }
+    setDialogOpen(false);
   };
 
-  const handleDelete = async (id: string) => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      toast.error('Session expirée. Reconnectez-vous.');
-      return;
-    }
-    try {
-      const response = await fetch(`${API_BASE_URL}/admin/sites/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        toast.error(data?.detail || 'Suppression impossible');
-        return;
-      }
-      await fetchSites();
-      toast.success('Agence supprimée');
-    } catch {
-      toast.error("Impossible de joindre le backend");
-    }
+  const handleDelete = (id: string) => {
+    setSites(prev => prev.filter(s => s.id !== id));
+    toast.success('Agence supprimée');
   };
 
   return (

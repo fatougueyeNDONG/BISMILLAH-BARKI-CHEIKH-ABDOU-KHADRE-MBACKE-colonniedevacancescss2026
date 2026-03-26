@@ -165,6 +165,7 @@ export interface AppSettings {
   ageMin: number;
   ageMax: number;
   inscriptionsOuvertes: boolean;
+  accesParentsActif: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -178,4 +179,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ageMin: 2012,
   ageMax: 2019,
   inscriptionsOuvertes: true,
+  accesParentsActif: true,
 };

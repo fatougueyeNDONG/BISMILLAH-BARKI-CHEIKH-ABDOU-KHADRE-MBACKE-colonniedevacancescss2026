@@ -1,5 +1,7 @@
 backend/.env
 colonie-joyeuse/.env
+# éviter un 2e dépôt Git accidentel dans le frontend
+colonie-joyeuse/.git/
 colonie-joyeuse/node_modules/
 colonie-joyeuse/dist/
 colonie-joyeuse/.vite/

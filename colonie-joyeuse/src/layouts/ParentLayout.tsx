@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useInscription } from '@/contexts/InscriptionContext';
 import { useNavigate } from 'react-router-dom';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { ParentSidebar } from '@/components/parent/ParentSidebar';
@@ -17,8 +18,16 @@ interface Props {
 
 export default function ParentLayout({ initialPage }: Props) {
   const { parent, logout } = useAuth();
+  const { settings, getEnfantsByParent } = useInscription();
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(initialPage || 'dashboard');
+
+  const now = new Date();
+  const dateFin = settings.dateFinInscriptions ? new Date(settings.dateFinInscriptions + 'T23:59:59') : null;
+  const inscriptionsCloturees = dateFin ? now > dateFin : false;
+
+  const enfants = parent ? getEnfantsByParent(parent.matricule) : [];
+  const allDesistes = inscriptionsCloturees && enfants.length > 0 && enfants.every(e => e.desistement === 'validé');
 
   useEffect(() => {
     if (initialPage) setCurrentPage(initialPage);
@@ -35,11 +44,19 @@ export default function ParentLayout({ initialPage }: Props) {
   };
 
   const handleNavigate = (page: string) => {
+    // Block restricted pages after deadline
+    if (inscriptionsCloturees && page === 'inscrire') return;
+    if (allDesistes && !['dashboard', 'inscriptions'].includes(page)) return;
     setCurrentPage(page);
     if (routeMap[page]) navigate(routeMap[page]);
   };
 
   const renderPage = () => {
+    // After deadline, block inscription page
+    if (inscriptionsCloturees && currentPage === 'inscrire') return <ParentDashboard />;
+    // If all désistés, only dashboard and inscriptions
+    if (allDesistes && !['dashboard', 'inscriptions'].includes(currentPage)) return <ParentDashboard />;
+
     switch (currentPage) {
       case 'dashboard': return <ParentDashboard />;
       case 'inscrire': return <InscrireEnfant />;

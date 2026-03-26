@@ -9,7 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 
 export default function MesEnfants() {
   const { parent } = useAuth();
-  const { getEnfantsByParent, setTitulaire, demanderDesistement, annulerDesistement, reinscrireEnfant, getListeFinale, addHistorique } = useInscription();
+  const { getEnfantsByParent, setTitulaire, demanderDesistement, annulerDesistement, reinscrireEnfant, getListeFinale, addHistorique, settings } = useInscription();
+
+  const now = new Date();
+  const dateFin = settings.dateFinInscriptions ? new Date(settings.dateFinInscriptions + 'T23:59:59') : null;
+  const inscriptionsCloturees = dateFin ? now > dateFin : false;
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [selectedName, setSelectedName] = useState('');
@@ -86,6 +90,20 @@ export default function MesEnfants() {
         <p className="text-muted-foreground mt-1">{enfants.length} enfant(s) inscrit(s)</p>
       </motion.div>
 
+      {inscriptionsCloturees && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Période d'inscription terminée</p>
+            <p className="text-xs text-amber-700 mt-1">
+              {enfants.every(e => e.desistement === 'validé')
+                ? "Tous vos enfants ont été désistés. Aucune action n'est disponible."
+                : "Seule l'action de désistement est disponible. Les modifications et réinscriptions ne sont plus possibles."}
+            </p>
+          </div>
+        </motion.div>
+      )}
+
       <div className="space-y-4">
         {enfants.map((enfant, i) => {
           const inFinale = isInFinale(enfant.id);
@@ -135,7 +153,8 @@ export default function MesEnfants() {
                   )}
 
                   <div className="flex gap-2 mt-1 flex-wrap">
-                    {enfant.statut !== 'Titulaire' && enfant.lienParente !== 'Autre' && !enfant.desistement && (
+                    {/* After deadline: only désistement allowed, no titulaire change, no réinscription */}
+                    {!inscriptionsCloturees && enfant.statut !== 'Titulaire' && enfant.lienParente !== 'Autre' && !enfant.desistement && (
                       <Button variant="outline" size="sm" onClick={() => handleSetTitulaire(enfant.id, `${enfant.prenom} ${enfant.nom}`)} className="rounded-lg gap-1 text-xs">
                         <ArrowUpDown className="w-3 h-3" />Définir titulaire
                       </Button>
@@ -153,7 +172,8 @@ export default function MesEnfants() {
                       </Button>
                     )}
 
-                    {enfant.desistement === 'validé' && (
+                    {/* Réinscrire only available before deadline */}
+                    {!inscriptionsCloturees && enfant.desistement === 'validé' && (
                       <Button variant="outline" size="sm" onClick={() => handleReinscrire(enfant.id, `${enfant.prenom} ${enfant.nom}`)} className="rounded-lg gap-1 text-xs hover:bg-accent hover:text-white hover:border-accent">
                         <RotateCcw className="w-3 h-3" />Réinscrire
                       </Button>

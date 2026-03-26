@@ -3,15 +3,20 @@ import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
 import { calculateAge } from '@/data/mockData';
-import { Users, UserCheck, Clock, Star, Award } from 'lucide-react';
+import { Users, UserCheck, Clock, Star, Award, AlertTriangle, Lock } from 'lucide-react';
 
 export default function ParentDashboard() {
   const { parent } = useAuth();
   const { getEnfantsByParent, getListeFinale, settings } = useInscription();
   if (!parent) return null;
 
+  const now = new Date();
+  const dateFin = settings.dateFinInscriptions ? new Date(settings.dateFinInscriptions + 'T23:59:59') : null;
+  const inscriptionsCloturees = dateFin ? now > dateFin : false;
+
   const MAX = settings.maxEnfantsParParent;
   const enfants = getEnfantsByParent(parent.matricule);
+  const allDesistes = inscriptionsCloturees && enfants.length > 0 && enfants.every(e => e.desistement === 'validé');
   const titulaire = enfants.find(e => e.statut === 'Titulaire');
   const suppN1 = enfants.find(e => e.statut === 'Suppléant N1');
   const suppN2 = enfants.find(e => e.statut === 'Suppléant N2');
@@ -40,6 +45,25 @@ export default function ParentDashboard() {
           Matricule : <span className="font-mono tabular-nums text-foreground">{parent.matricule}</span> — {parent.service}
         </p>
       </motion.div>
+
+      {/* Bandeau inscriptions clôturées */}
+      {inscriptionsCloturees && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-amber-50 border border-amber-200 rounded-xl p-5 flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+            {allDesistes ? <Lock className="w-6 h-6 text-amber-600" /> : <AlertTriangle className="w-6 h-6 text-amber-600" />}
+          </div>
+          <div>
+            <h3 className="font-semibold text-amber-800">
+              {allDesistes ? '🔒 Accès restreint — Aucune action disponible' : '⚠️ Période d\'inscription terminée'}
+            </h3>
+            <p className="text-sm text-amber-700 mt-1">
+              {allDesistes
+                ? 'Tous vos enfants ont été désistés et validés par le gestionnaire. Vous ne disposez plus d\'aucune action. Pour toute question, contactez l\'administration.'
+                : `Les inscriptions sont clôturées depuis le ${new Date(settings.dateFinInscriptions).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}. Vous ne pouvez plus inscrire de nouveaux enfants ni modifier vos inscriptions. Seule l'action de désistement reste disponible depuis la section "Mes enfants".`}
+            </p>
+          </div>
+        </motion.div>
+      )}
 
       {/* Notification si enfant retenu */}
       {enfantsRetenus.length > 0 && (

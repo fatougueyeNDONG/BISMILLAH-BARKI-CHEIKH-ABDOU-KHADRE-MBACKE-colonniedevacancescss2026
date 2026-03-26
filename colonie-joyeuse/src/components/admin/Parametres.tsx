@@ -13,33 +13,9 @@ export default function Parametres() {
   const { settings, updateSettings } = useInscription();
   const [capaciteNonDefini, setCapaciteNonDefini] = useState(settings.capaciteMax === null);
   const [maxEnfantsNonDefini, setMaxEnfantsNonDefini] = useState(settings.maxEnfantsParParent === null);
-  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
 
-  const handleSave = async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      toast({ title: 'Erreur', description: 'Session expirée. Reconnectez-vous.', variant: 'destructive' });
-      return;
-    }
-    try {
-      const response = await fetch(`${API_BASE_URL}/admin/settings`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(settings),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        toast({ title: 'Erreur', description: data?.detail || "Impossible d'enregistrer les paramètres.", variant: 'destructive' });
-        return;
-      }
-      updateSettings(data);
-      toast({ title: '✅ Paramètres enregistrés', description: 'Les paramètres ont été mis à jour avec succès.' });
-    } catch {
-      toast({ title: 'Erreur réseau', description: "Impossible de joindre le backend.", variant: 'destructive' });
-    }
+  const handleSave = () => {
+    toast({ title: '✅ Paramètres enregistrés', description: 'Les paramètres ont été mis à jour avec succès.' });
   };
 
   return (
@@ -163,12 +139,21 @@ export default function Parametres() {
             <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center"><Shield className="w-5 h-5 text-emerald-600" /></div>
             <h3 className="text-lg font-semibold text-foreground">Statut des inscriptions</h3>
           </div>
-          <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30">
-            <div>
-              <p className="font-medium text-foreground">Inscriptions ouvertes</p>
-              <p className="text-sm text-muted-foreground">Les parents peuvent actuellement inscrire leurs enfants</p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30">
+              <div>
+                <p className="font-medium text-foreground">Inscriptions ouvertes</p>
+                <p className="text-sm text-muted-foreground">Les parents peuvent actuellement inscrire leurs enfants</p>
+              </div>
+              <Switch checked={settings.inscriptionsOuvertes} onCheckedChange={v => updateSettings({ inscriptionsOuvertes: v })} />
             </div>
-            <Switch checked={settings.inscriptionsOuvertes} onCheckedChange={v => updateSettings({ inscriptionsOuvertes: v })} />
+            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30">
+              <div>
+                <p className="font-medium text-foreground">Accès plateforme parents</p>
+                <p className="text-sm text-muted-foreground">Autoriser les parents à se connecter à leur espace. Si désactivé, aucun parent ne pourra accéder à la plateforme.</p>
+              </div>
+              <Switch checked={settings.accesParentsActif} onCheckedChange={v => updateSettings({ accesParentsActif: v })} />
+            </div>
           </div>
         </motion.div>
 
@@ -207,7 +192,7 @@ export default function Parametres() {
         </motion.div>
 
         <div className="flex justify-end">
-          <Button onClick={() => void handleSave()} className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">Enregistrer les paramètres</Button>
+          <Button onClick={handleSave} className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">Enregistrer les paramètres</Button>
         </div>
       </div>
     </div>

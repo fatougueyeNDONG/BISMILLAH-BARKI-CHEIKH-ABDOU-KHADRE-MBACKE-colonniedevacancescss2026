@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useEffect } from 'react';
+import { MOCK_SITES } from '@/data/mockData';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
@@ -13,8 +13,6 @@ import { AlertTriangle, CheckCircle2, UserPlus, Star, Clock, PartyPopper } from 
 export default function InscrireEnfant() {
   const { parent } = useAuth();
   const { getEnfantsByParent, addEnfant, settings, addHistorique } = useInscription();
-  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
-  const [sites, setSites] = useState<Array<{ id: number; nom: string; code: string }>>([]);
 
   const [prenom, setPrenom] = useState('');
   const [nom, setNom] = useState('');
@@ -32,25 +30,7 @@ export default function InscrireEnfant() {
   const [successMessage, setSuccessMessage] = useState('');
   const [showNextPrompt, setShowNextPrompt] = useState(false);
   const [showMaxReachedPopup, setShowMaxReachedPopup] = useState(false);
-
-  useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    void (async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/admin/sites`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) return;
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          setSites(data.filter((s) => s?.code && s?.nom));
-        }
-      } catch {
-        // Keep empty fallback if backend is unavailable.
-      }
-    })();
-  }, [API_BASE_URL]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (!parent) return null;
 
@@ -85,7 +65,7 @@ export default function InscrireEnfant() {
       setErrorOpen(true);
       return;
     }
-    if (!prenom.trim() || !nom.trim() || !dateNaissance || !sexe || !lienParente || !telephone.trim() || !site) {
+    if (!prenom.trim() || !nom.trim() || !dateNaissance || !sexe || !lienParente || !telephone.trim() || !email.trim() || !site) {
       setErrorTitle("Champs requis");
       setErrorMessage("Veuillez remplir tous les champs obligatoires du formulaire.");
       setErrorOpen(true);
@@ -98,6 +78,11 @@ export default function InscrireEnfant() {
       setErrorOpen(true);
       return;
     }
+    setConfirmOpen(true);
+  };
+
+  const confirmInscription = () => {
+    setConfirmOpen(false);
 
     let liste: 'principale' | 'attente_n1' | 'attente_n2';
     let statut: 'Titulaire' | 'Suppléant N1' | 'Suppléant N2';
@@ -111,7 +96,6 @@ export default function InscrireEnfant() {
         liste = 'attente_n1'; statut = 'Suppléant N1';
       }
     } else {
-      // 3ème enfant et plus → toujours N2
       liste = 'attente_n2'; statut = 'Suppléant N2';
     }
 
@@ -221,7 +205,7 @@ export default function InscrireEnfant() {
                 <Input value={parent.nom} disabled className="bg-muted/50" />
               </div>
               <div className="space-y-2">
-                <Label className="text-foreground">Email</Label>
+                <Label className="text-foreground">Email *</Label>
                 <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className="h-11 rounded-lg" />
               </div>
               <div className="space-y-2">
@@ -233,7 +217,7 @@ export default function InscrireEnfant() {
                 <Select value={site} onValueChange={setSite}>
                   <SelectTrigger className="h-11 rounded-lg"><SelectValue placeholder="Sélectionner une agence" /></SelectTrigger>
                   <SelectContent>
-                    {sites.map(s => (
+                    {MOCK_SITES.filter(s => s.actif).map(s => (
                       <SelectItem key={s.id} value={s.code}>{s.nom}</SelectItem>
                     ))}
                   </SelectContent>
@@ -330,6 +314,32 @@ export default function InscrireEnfant() {
                 <UserPlus className="w-4 h-4" />+ Inscrire le {nbInscrits + 1}ème enfant
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-md rounded-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-accent" /></div>
+              <DialogTitle className="text-foreground">Confirmer l'inscription</DialogTitle>
+            </div>
+            <DialogDescription className="pt-2">
+              Veuillez vérifier attentivement les informations saisies avant de confirmer :
+              <br /><br />
+              <strong>Enfant :</strong> {prenom} {nom}<br />
+              <strong>Date de naissance :</strong> {dateNaissance ? new Date(dateNaissance).toLocaleDateString('fr-FR') : ''}<br />
+              <strong>Sexe :</strong> {sexe === 'M' ? 'Masculin' : sexe === 'F' ? 'Féminin' : ''}<br />
+              <strong>Lien de parenté :</strong> {lienParente}
+              <br /><br />
+              <span className="text-destructive font-medium">⚠ Attention : une fois l'inscription enregistrée, vous ne pourrez plus modifier ces informations.</span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} className="rounded-lg">Vérifier à nouveau</Button>
+            <Button onClick={confirmInscription} className="rounded-lg bg-accent text-white hover:bg-accent/90">Confirmer l'inscription</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -21,6 +21,7 @@ export default function ListeFinale() {
   const enfantsDesistes = getEnfantsDesistesFinale();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSexe, setFilterSexe] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'retenus' | 'desistes'>('retenus');
   const [detailEnfant, setDetailEnfant] = useState<Enfant | null>(null);
   const [confirmDesistOpen, setConfirmDesistOpen] = useState(false);
   const [desistTarget, setDesistTarget] = useState<Enfant | null>(null);
@@ -68,33 +69,47 @@ export default function ListeFinale() {
     setConfirmDesistOpen(false); setDesistTarget(null);
   };
 
-  const exportList = (list: Enfant[], filename: string, format: 'csv' | 'pdf') => {
-    const headers = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Service', 'Agence', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', "Liste d'origine"];
+  const exportList = (list: Enfant[], filename: string, format: 'csv' | 'pdf', isDesistes = false) => {
+    const baseHeaders = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Téléphone', 'Service', 'Agence', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', "Liste d'origine"];
+    const headers = isDesistes ? [...baseHeaders, 'Date du désistement'] : baseHeaders;
     const rows = list.map((e, i) => {
       const p = parents.find(x => x.matricule === e.parentMatricule);
-      return [i + 1, e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', p?.site || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, getListeLabel(e.liste)];
+      const baseRow = [i + 1, e.parentMatricule, p?.nom || '', p?.prenom || '', p?.telephone || '', p?.service || '', p?.site || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, getListeLabel(e.liste)];
+      if (isDesistes) {
+        baseRow.push(e.dateDesistement ? new Date(e.dateDesistement).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—');
+      }
+      return baseRow;
     });
 
     if (format === 'csv') {
-      exportStyledExcel(headers, rows, 'Liste Finale', `${filename}.xlsx`);
+      exportStyledExcel(headers, rows, isDesistes ? 'Enfants Désistés' : 'Liste Finale', `${filename}.xlsx`);
     } else {
       const doc = new jsPDF({ orientation: 'landscape' });
       doc.setFontSize(16);
-      doc.text('Liste finale des enfants retenus', 14, 15);
+      doc.text(isDesistes ? 'Liste des enfants désistés' : 'Liste finale des enfants retenus', 14, 15);
       doc.setFontSize(10);
-      doc.text(`${list.length}/${capaciteLabel} enfant(s)`, 14, 22);
+      doc.text(`${list.length} enfant(s)`, 14, 22);
       autoTable(doc, {
         head: [headers],
         body: rows.map(r => r.map(c => String(c))),
         startY: 28,
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [16, 185, 129] },
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: isDesistes ? [245, 158, 11] : [16, 185, 129] },
       });
       doc.save(`${filename}.pdf`);
     }
   };
 
-  const renderTable = (list: Enfant[], showDesistAction: boolean) => (
+  const handleHeaderExport = (format: 'csv' | 'pdf') => {
+    if (activeTab === 'desistes') {
+      exportList(filteredDesistes, 'enfants_desistes', format, true);
+      return;
+    }
+
+    exportList(filteredRetenus, 'liste_finale', format);
+  };
+
+  const renderTable = (list: Enfant[], showDesistAction: boolean, isDesistes = false) => (
     <div className="overflow-x-auto">
       <Table>
         <TableHeader>
@@ -103,6 +118,7 @@ export default function ListeFinale() {
             <TableHead className="font-semibold">Matricule</TableHead>
             <TableHead className="font-semibold">Nom du parent</TableHead>
             <TableHead className="font-semibold">Prénom du parent</TableHead>
+            <TableHead className="font-semibold">Téléphone</TableHead>
             <TableHead className="font-semibold">Service</TableHead>
             <TableHead className="font-semibold">Agence</TableHead>
             <TableHead className="font-semibold">Prénom Enfant</TableHead>
@@ -111,12 +127,13 @@ export default function ListeFinale() {
             <TableHead className="font-semibold">Sexe</TableHead>
             <TableHead className="font-semibold">Statut</TableHead>
             <TableHead className="font-semibold">Liste d'origine</TableHead>
+            {isDesistes && <TableHead className="font-semibold">Date du désistement</TableHead>}
             <TableHead className="font-semibold">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {list.length === 0 ? (
-            <TableRow><TableCell colSpan={13} className="text-center py-12 text-muted-foreground">Aucun enfant</TableCell></TableRow>
+            <TableRow><TableCell colSpan={isDesistes ? 15 : 14} className="text-center py-12 text-muted-foreground">Aucun enfant</TableCell></TableRow>
           ) : (
             list.map((e, i) => {
               const p = parents.find(x => x.matricule === e.parentMatricule);
@@ -126,6 +143,7 @@ export default function ListeFinale() {
                   <TableCell className="font-mono tabular-nums text-sm">{e.parentMatricule}</TableCell>
                   <TableCell>{p?.nom || '—'}</TableCell>
                   <TableCell>{p?.prenom || '—'}</TableCell>
+                  <TableCell className="text-sm">{p?.telephone || '—'}</TableCell>
                   <TableCell className="text-sm">{p?.service || '—'}</TableCell>
                   <TableCell className="text-sm">{p?.site || '—'}</TableCell>
                   <TableCell>
@@ -139,6 +157,7 @@ export default function ListeFinale() {
                   <TableCell>{e.sexe === 'M' ? 'M' : 'F'}</TableCell>
                   <TableCell><span className={`text-xs font-medium px-2 py-0.5 rounded-md ${getStatutBadge(e.statut)}`}>{e.statut}</span></TableCell>
                   <TableCell><span className="text-xs font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground">{getListeLabel(e.liste)}</span></TableCell>
+                  {isDesistes && <TableCell className="text-sm">{e.dateDesistement ? new Date(e.dateDesistement).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</TableCell>}
                   <TableCell>
                     <div className="flex gap-1 flex-wrap">
                       {showDesistAction && e.desistement === 'demandé' && (
@@ -174,8 +193,8 @@ export default function ListeFinale() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => exportList(filteredRetenus, 'liste_finale', 'csv')} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export Excel</Button>
-          <Button onClick={() => exportList(filteredRetenus, 'liste_finale', 'pdf')} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export PDF</Button>
+          <Button onClick={() => handleHeaderExport('csv')} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export Excel</Button>
+          <Button onClick={() => handleHeaderExport('pdf')} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export PDF</Button>
         </div>
       </motion.div>
 
@@ -216,7 +235,7 @@ export default function ListeFinale() {
       </motion.div>
 
       {/* Tabs */}
-      <Tabs defaultValue="retenus">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'retenus' | 'desistes')}>
         <TabsList className="rounded-lg">
           <TabsTrigger value="retenus" className="gap-2 rounded-lg"><Award className="w-4 h-4" />Enfants retenus ({enfantsRetenus.length})</TabsTrigger>
           <TabsTrigger value="desistes" className="gap-2 rounded-lg"><AlertTriangle className="w-4 h-4" />Enfants désistés ({enfantsDesistes.length})</TabsTrigger>
@@ -224,11 +243,15 @@ export default function ListeFinale() {
 
         <TabsContent value="retenus" className="mt-4">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-card rounded-xl shadow-card border border-border">
-            {renderTable(filteredRetenus, false)}
+            {renderTable(filteredRetenus, false, false)}
           </motion.div>
         </TabsContent>
 
         <TabsContent value="desistes" className="mt-4">
+          <div className="flex gap-2 mb-4">
+            <Button onClick={() => exportList(filteredDesistes, 'enfants_desistes', 'csv', true)} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export Excel</Button>
+            <Button onClick={() => exportList(filteredDesistes, 'enfants_desistes', 'pdf', true)} variant="outline" className="gap-2 rounded-lg"><FileDown className="w-4 h-4" />Export PDF</Button>
+          </div>
           {enfantsDesistes.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
               <p className="text-xs text-amber-800">
@@ -237,7 +260,7 @@ export default function ListeFinale() {
             </div>
           )}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-card rounded-xl shadow-card border border-border">
-            {renderTable(filteredDesistes, true)}
+            {renderTable(filteredDesistes, true, true)}
           </motion.div>
         </TabsContent>
       </Tabs>

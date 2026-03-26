@@ -4,9 +4,11 @@ import {
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
 } from '@/components/ui/sidebar';
 import { LayoutDashboard, UserPlus, Users, FileText, HelpCircle, Eye } from 'lucide-react';
+import { useInscription } from '@/contexts/InscriptionContext';
+import { useAuth } from '@/contexts/AuthContext';
 import logo from '@/assets/logo.png';
 
-const items = [
+const allItems = [
   { title: 'Tableau de bord', id: 'dashboard', icon: LayoutDashboard },
   { title: 'Inscrire un enfant', id: 'inscrire', icon: UserPlus },
   { title: 'Mes enfants', id: 'enfants', icon: Users },
@@ -22,6 +24,23 @@ interface Props {
 export function ParentSidebar({ currentPage, onNavigate }: Props) {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
+  const { settings, getEnfantsByParent } = useInscription();
+  const { parent } = useAuth();
+
+  const now = new Date();
+  const dateFin = settings.dateFinInscriptions ? new Date(settings.dateFinInscriptions + 'T23:59:59') : null;
+  const inscriptionsCloturees = dateFin ? now > dateFin : false;
+
+  // Check if all children have validated désistement
+  const enfants = parent ? getEnfantsByParent(parent.matricule) : [];
+  const allDesistes = inscriptionsCloturees && enfants.length > 0 && enfants.every(e => e.desistement === 'validé');
+
+  // After deadline: only show dashboard + enfants (for désistement). If all désistés: only dashboard.
+  const items = inscriptionsCloturees
+    ? allDesistes
+      ? allItems.filter(i => i.id === 'dashboard' || i.id === 'inscriptions')
+      : allItems.filter(i => i.id !== 'inscrire')
+    : allItems;
 
   return (
     <Sidebar collapsible="icon">

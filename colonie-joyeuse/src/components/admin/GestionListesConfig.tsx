@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,70 +24,31 @@ interface ListeConfig {
   description: string;
 }
 
+const INITIAL_LISTES: ListeConfig[] = [
+  { id: 'l1', code: 'PRINCIPALE', nom: 'Liste principale', description: 'Liste des enfants titulaires' },
+  { id: 'l2', code: 'ATTENTE_N1', nom: "Liste d'attente N1", description: 'Première liste de suppléants (lien direct)' },
+  { id: 'l3', code: 'ATTENTE_N2', nom: "Liste d'attente N2", description: 'Deuxième liste de suppléants (autres liens)' },
+];
+
 export default function GestionListesConfig() {
-  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
-  const [listes, setListes] = useState<ListeConfig[]>([]);
+  const [listes, setListes] = useState<ListeConfig[]>([...INITIAL_LISTES]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingListe, setEditingListe] = useState<ListeConfig | null>(null);
   const [form, setForm] = useState({ code: '', nom: '', description: '' });
   const [importOpen, setImportOpen] = useState(false);
 
-  const fetchListes = async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    const response = await fetch(`${API_BASE_URL}/admin/listes-config`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) return;
-    const data = await response.json();
-    if (!Array.isArray(data)) return;
-    setListes(
-      data.map((l) => ({
-        id: String(l.id),
-        code: String(l.code),
-        nom: String(l.nom),
-        description: l.description ? String(l.description) : '',
-      })),
-    );
-  };
-
-  useEffect(() => {
-    void fetchListes();
-  }, []);
-
-  const handleImportListes = async (data: any[]) => {
+  const handleImportListes = (data: any[]) => {
     let success = 0;
     const errors: { ligne: number; message: string }[] = [];
     const validCodes = CODE_OPTIONS.map(o => o.value);
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      return { success: 0, errors: [{ ligne: 1, message: 'Session expirée. Reconnectez-vous.' }] };
-    }
-    for (let i = 0; i < data.length; i += 1) {
-      const row = data[i];
-      if (!row.code || !row.nom) { errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (code, nom)' }); continue; }
+    data.forEach((row, i) => {
+      if (!row.code || !row.nom) { errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (code, nom)' }); return; }
       const code = row.code.toUpperCase().trim();
-      if (!validCodes.includes(code)) { errors.push({ ligne: i + 2, message: `Code invalide "${row.code}" (${validCodes.join(', ')})` }); continue; }
-      try {
-        const response = await fetch(`${API_BASE_URL}/admin/listes-config`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ code, nom: row.nom, description: row.description || null }),
-        });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          errors.push({ ligne: i + 2, message: payload?.detail || 'Erreur backend' });
-          continue;
-        }
-        success++;
-      } catch {
-        errors.push({ ligne: i + 2, message: 'Impossible de joindre le backend' });
-      }
-    }
-    await fetchListes();
+      if (!validCodes.includes(code)) { errors.push({ ligne: i + 2, message: `Code invalide "${row.code}" (${validCodes.join(', ')})` }); return; }
+      if (listes.some(l => l.code === code)) { errors.push({ ligne: i + 2, message: `Code "${code}" déjà existant` }); return; }
+      setListes(prev => [...prev, { id: `l_${Date.now()}_${i}`, code, nom: row.nom, description: row.description || '' }]);
+      success++;
+    });
     return { success, errors };
   };
 
@@ -106,7 +67,7 @@ export default function GestionListesConfig() {
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!form.code || !form.nom.trim()) {
       toast.error('Le code et le nom sont obligatoires');
       return;
@@ -116,62 +77,19 @@ export default function GestionListesConfig() {
       toast.error('Ce code de liste existe déjà, veuillez en choisir un autre');
       return;
     }
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      toast.error('Session expirée. Reconnectez-vous.');
-      return;
+    if (editingListe) {
+      setListes(prev => prev.map(l => l.id === editingListe.id ? { ...l, ...form } : l));
+      toast.success('Liste modifiée avec succès');
+    } else {
+      setListes(prev => [...prev, { id: `l_${Date.now()}`, ...form }]);
+      toast.success('Liste ajoutée avec succès');
     }
-    try {
-      const isEdit = !!editingListe;
-      const response = await fetch(
-        isEdit ? `${API_BASE_URL}/admin/listes-config/${editingListe!.id}` : `${API_BASE_URL}/admin/listes-config`,
-        {
-          method: isEdit ? 'PATCH' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            code: form.code,
-            nom: form.nom.trim(),
-            description: form.description.trim() || null,
-          }),
-        },
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        toast.error(data?.detail || "Impossible d'enregistrer");
-        return;
-      }
-      await fetchListes();
-      toast.success(isEdit ? 'Liste modifiée avec succès' : 'Liste ajoutée avec succès');
-      setDialogOpen(false);
-    } catch {
-      toast.error("Impossible de joindre le backend");
-    }
+    setDialogOpen(false);
   };
 
-  const handleDelete = async (id: string) => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      toast.error('Session expirée. Reconnectez-vous.');
-      return;
-    }
-    try {
-      const response = await fetch(`${API_BASE_URL}/admin/listes-config/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        toast.error(data?.detail || 'Suppression impossible');
-        return;
-      }
-      await fetchListes();
-      toast.success('Liste supprimée');
-    } catch {
-      toast.error("Impossible de joindre le backend");
-    }
+  const handleDelete = (id: string) => {
+    setListes(prev => prev.filter(l => l.id !== id));
+    toast.success('Liste supprimée');
   };
 
   // For edit, include current code in available options

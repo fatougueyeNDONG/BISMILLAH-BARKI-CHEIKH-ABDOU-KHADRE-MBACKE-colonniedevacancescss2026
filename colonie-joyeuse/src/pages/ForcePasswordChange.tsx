@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { useInscription } from '@/contexts/InscriptionContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,15 +11,14 @@ import logo from '@/assets/logo.png';
 
 export default function ForcePasswordChange() {
   const { pendingParent, setAuthStep, setPendingParent } = useAuth();
+  const { updateParent } = useInscription();
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successOpen, setSuccessOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!newPwd || !confirmPwd) {
       setErrorMessage('Veuillez remplir tous les champs.');
       setErrorOpen(true);
@@ -34,39 +34,10 @@ export default function ForcePasswordChange() {
       setErrorOpen(true);
       return;
     }
-    const pendingToken = sessionStorage.getItem('pending_access_token');
-    if (!pendingToken) {
-      setErrorMessage("Session expirée. Veuillez vous reconnecter.");
-      setErrorOpen(true);
-      setAuthStep('logged_out');
-      return;
+    if (pendingParent) {
+      updateParent(pendingParent.matricule, { motDePasse: newPwd, premiereConnexion: false });
     }
-    setIsSubmitting(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/change-password-first-login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${pendingToken}`,
-        },
-        body: JSON.stringify({
-          new_password: newPwd,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setErrorMessage(data?.detail || 'Impossible de changer le mot de passe.');
-        setErrorOpen(true);
-        return;
-      }
-      sessionStorage.removeItem('pending_access_token');
-      setSuccessOpen(true);
-    } catch {
-      setErrorMessage("Impossible de joindre l'API. Vérifiez que le backend est démarré.");
-      setErrorOpen(true);
-    } finally {
-      setIsSubmitting(false);
-    }
+    setSuccessOpen(true);
   };
 
   const handleSuccessClose = () => {
@@ -84,13 +55,7 @@ export default function ForcePasswordChange() {
             <div>
               <h2 className="text-xl font-bold text-foreground">Changement de mot de passe obligatoire</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Bienvenue
-                {pendingParent ? (
-                  <> <strong>{pendingParent.prenom} {pendingParent.nom}</strong></>
-                ) : (
-                  " dans votre espace"
-                )}
-                {" "}! Pour des raisons de sécurité, veuillez définir votre propre mot de passe.
+                Bienvenue <strong>{pendingParent?.prenom} {pendingParent?.nom}</strong> ! Pour des raisons de sécurité, veuillez définir votre propre mot de passe.
               </p>
             </div>
           </div>
@@ -116,7 +81,7 @@ export default function ForcePasswordChange() {
                 <Input type="password" placeholder="Confirmez le mot de passe" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSubmit()} className="pl-10 h-12 rounded-lg" />
               </div>
             </div>
-            <Button disabled={isSubmitting} onClick={() => void handleSubmit()} className="w-full h-12 rounded-lg bg-brand-navy text-primary-foreground hover:bg-brand-navy/90 font-semibold">
+            <Button onClick={handleSubmit} className="w-full h-12 rounded-lg bg-brand-navy text-primary-foreground hover:bg-brand-navy/90 font-semibold">
               Définir mon mot de passe
             </Button>
           </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
+import { getParentByMatricule, MOCK_ADMIN_USERS } from '@/data/mockData';
 import logo from '@/assets/logo.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,12 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Shield, Users, KeyRound, AlertTriangle, Lock, Eye, EyeOff, Info } from 'lucide-react';
 
 type LoginMode = 'select' | 'parent' | 'admin';
-type BackendRole = 'GESTIONNAIRE' | 'SUPER_ADMIN';
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
 
 export default function LoginPage() {
-  const { loginAsParent, loginAsAdmin, setAuthStep, setPendingParent } = useAuth();
-  const { settings } = useInscription();
+  const { loginAsParent, loginAsAdmin, setAuthStep } = useAuth();
+  const { settings, parents } = useInscription();
   const [mode, setMode] = useState<LoginMode>('select');
   const [matricule, setMatricule] = useState('');
   const [parentPassword, setParentPassword] = useState('');
@@ -26,145 +25,69 @@ export default function LoginPage() {
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [errorTitle, setErrorTitle] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
   const inscriptionsClosed = !settings.inscriptionsOuvertes || today > settings.dateFinInscriptions;
   const inscriptionsNotStarted = today < settings.dateDebutInscriptions;
 
-  const showError = (title: string, message: string) => {
-    setErrorTitle(title);
-    setErrorMessage(message);
-    setErrorOpen(true);
-  };
-
-  const extractRoleFromToken = (token: string): BackendRole | null => {
-    try {
-      const parts = token.split('.');
-      if (parts.length < 2) return null;
-      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-      const json = JSON.parse(atob(base64));
-      const role = String(json?.role || '').toUpperCase();
-      if (role === 'GESTIONNAIRE' || role === 'SUPER_ADMIN') return role;
-      return null;
-    } catch {
-      return null;
-    }
-  };
-
-  const handleParentLogin = async () => {
-    if (inscriptionsNotStarted) {
-      showError(
-        "Inscriptions pas encore ouvertes",
-        `La période d'inscription pour la Colonie de Vacances 2026 n'a pas encore commencé. Les inscriptions ouvriront le ${new Date(settings.dateDebutInscriptions).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}. Veuillez patienter jusqu'à cette date.`,
-      );
+  const handleParentLogin = () => {
+    if (!settings.accesParentsActif) {
+      setErrorTitle("Accès désactivé");
+      setErrorMessage("L'accès à la plateforme parents est actuellement désactivé par l'administration. Veuillez réessayer ultérieurement.");
+      setErrorOpen(true);
       return;
     }
-    if (inscriptionsClosed) {
-      showError(
-        "Inscriptions clôturées",
-        "La période d'inscription pour la Colonie de Vacances 2026 est terminée. Les inscriptions étaient ouvertes jusqu'au " + new Date(settings.dateFinInscriptions).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) + ". Pour toute information, contactez l'administration.",
-      );
+    if (inscriptionsNotStarted) {
+      setErrorTitle("Inscriptions pas encore ouvertes");
+      setErrorMessage(`La période d'inscription pour la Colonie de Vacances 2026 n'a pas encore commencé. Les inscriptions ouvriront le ${new Date(settings.dateDebutInscriptions).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}. Veuillez patienter jusqu'à cette date.`);
+      setErrorOpen(true);
       return;
     }
 
     const trimmed = matricule.trim();
     if (!trimmed || !parentPassword) {
-      showError("Champs requis", "Veuillez saisir votre matricule et votre mot de passe.");
+      setErrorTitle("Champs requis");
+      setErrorMessage("Veuillez saisir votre matricule et votre mot de passe.");
+      setErrorOpen(true);
       return;
     }
-
-    setIsSubmitting(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/login-parent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matricule: trimmed, password: parentPassword }),
-      });
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data?.access_token) {
-        showError("Erreur d'authentification", data?.detail || "Le matricule ou le mot de passe est incorrect.");
-        return;
-      }
-
-      localStorage.setItem('access_token', data.access_token);
-      const meResponse = await fetch(`${API_BASE_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${data.access_token}` },
-      });
-      const meData = await meResponse.json().catch(() => ({}));
-      const parentProfile = meData?.parent || {};
-      if (data.must_change_password) {
-        sessionStorage.setItem('pending_access_token', data.access_token);
-        localStorage.removeItem('access_token');
-        setPendingParent({
-          matricule: parentProfile.matricule || trimmed,
-          prenom: parentProfile.prenom || '',
-          nom: parentProfile.nom || '',
-          service: parentProfile.service || '',
-          motDePasse: '',
-          premiereConnexion: true,
-        });
-        setAuthStep('force_password_change');
-        return;
-      }
-
-      loginAsParent({
-        matricule: parentProfile.matricule || trimmed,
-        prenom: parentProfile.prenom || '',
-        nom: parentProfile.nom || '',
-        service: parentProfile.service || '',
-        motDePasse: '',
-        premiereConnexion: false,
-      });
-    } catch {
-      showError("Backend inaccessible", "Impossible de joindre l'API. Vérifiez que le backend est bien démarré.");
-    } finally {
-      setIsSubmitting(false);
+    const parent = parents.find(p => p.matricule.toLowerCase() === trimmed.toLowerCase());
+    if (!parent) {
+      setErrorTitle("Accès restreint");
+      setErrorMessage("Le matricule saisi ne correspond à aucun agent actif. Vérifiez votre carte professionnelle ou contactez la DRH.");
+      setErrorOpen(true);
+      return;
     }
+    if (parent.motDePasse !== parentPassword) {
+      setErrorTitle("Mot de passe incorrect");
+      setErrorMessage("Le mot de passe saisi est incorrect. Veuillez réessayer ou utiliser l'option 'Mot de passe oublié'.");
+      setErrorOpen(true);
+      return;
+    }
+    loginAsParent(parent);
   };
 
-  const handleAdminLogin = async () => {
+  const handleAdminLogin = () => {
     if (!email || !password) {
-      showError("Champs requis", "Veuillez renseigner votre adresse e-mail et votre mot de passe.");
+      setErrorTitle("Champs requis");
+      setErrorMessage("Veuillez renseigner votre adresse e-mail et votre mot de passe.");
+      setErrorOpen(true);
       return;
     }
-
-    setIsSubmitting(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/login-admin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data?.access_token) {
-        showError("Erreur d'authentification", data?.detail || "Les identifiants saisis sont incorrects.");
-        return;
-      }
-
-      const backendRole = extractRoleFromToken(data.access_token);
-      if (!backendRole) {
-        showError("Rôle invalide", "Le rôle retourné par le backend est invalide.");
-        return;
-      }
-
-      if (data.must_change_password) {
-        sessionStorage.setItem('pending_access_token', data.access_token);
-        localStorage.removeItem('access_token');
-        setPendingParent(null);
-        setAuthStep('force_password_change');
-        return;
-      }
-
-      loginAsAdmin(email.trim(), backendRole === 'SUPER_ADMIN' ? 'super_admin' : 'gestionnaire');
-      localStorage.setItem('access_token', data.access_token);
-    } catch {
-      showError("Backend inaccessible", "Impossible de joindre l'API. Vérifiez que le backend est bien démarré.");
-    } finally {
-      setIsSubmitting(false);
+    const user = MOCK_ADMIN_USERS.find(u => u.email === email);
+    if (!user || user.motDePasse !== password) {
+      setErrorTitle("Erreur d'authentification");
+      setErrorMessage("Les identifiants saisis sont incorrects.");
+      setErrorOpen(true);
+      return;
     }
+    if (!user.actif) {
+      setErrorTitle("Compte désactivé");
+      setErrorMessage("Votre compte a été désactivé par un administrateur.");
+      setErrorOpen(true);
+      return;
+    }
+    loginAsAdmin(email, user.role);
   };
 
   return (
@@ -257,7 +180,7 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                <Button onClick={handleParentLogin} disabled={isSubmitting} className="w-full h-12 rounded-lg bg-brand-navy text-primary-foreground hover:bg-brand-navy/90 font-semibold text-base">
+                <Button onClick={handleParentLogin} className="w-full h-12 rounded-lg bg-brand-navy text-primary-foreground hover:bg-brand-navy/90 font-semibold text-base">
                   Accéder à mon espace
                 </Button>
 
@@ -304,7 +227,7 @@ export default function LoginPage() {
                     </button>
                   </div>
                 </div>
-                <Button onClick={handleAdminLogin} disabled={isSubmitting} className="w-full h-12 rounded-lg bg-brand-navy text-primary-foreground hover:bg-brand-navy/90 font-semibold text-base">
+                <Button onClick={handleAdminLogin} className="w-full h-12 rounded-lg bg-brand-navy text-primary-foreground hover:bg-brand-navy/90 font-semibold text-base">
                   Se connecter
                 </Button>
                 <button onClick={() => { setMode('select'); setEmail(''); setPassword(''); }} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -314,7 +237,7 @@ export default function LoginPage() {
 
               <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
                 <p className="text-xs text-muted-foreground">
-                  <strong className="text-primary">Info :</strong> cette connexion utilise maintenant les comptes réels du backend.
+                  <strong className="text-primary">Test :</strong> admin@css.sn / admin123 (Gestionnaire) — superadmin@css.sn / admin123 (Super Admin)
                 </p>
               </div>
             </div>
