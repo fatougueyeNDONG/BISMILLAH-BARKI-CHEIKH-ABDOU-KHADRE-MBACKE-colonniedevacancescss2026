@@ -24,7 +24,7 @@ class AdminUserCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     email: Optional[EmailStr] = None
     matricule: Optional[str] = Field(default=None, min_length=1, max_length=50)
-    password: str = Field(min_length=8, max_length=255)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=255)
 
 
 class ParentUserCreateIn(BaseModel):

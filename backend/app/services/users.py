@@ -44,6 +44,7 @@ def create_user_superadmin(
     email: Optional[str] = None,
     matricule: Optional[str] = None,
     parent_payload: dict | None = None,
+    must_change_password: bool = False,
 ) -> User:
     if role == UserRole.PARENT:
         if not matricule or not email is None and email == "":
@@ -63,6 +64,7 @@ def create_user_superadmin(
             matricule=matricule,
             password_hash=hash_password(password),
             is_active=True,
+            must_change_password=must_change_password,
         )
         db.add(user)
         db.flush()
@@ -97,6 +99,7 @@ def create_user_superadmin(
             matricule=matricule,
             password_hash=hash_password(password),
             is_active=True,
+            must_change_password=must_change_password,
         )
         db.add(user)
         db.flush()
@@ -141,6 +144,7 @@ def change_password_for_user(db: Session, *, user_id: int, new_password: str) ->
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable.")
     user.password_hash = hash_password(new_password)
+    user.must_change_password = False
     db.flush()
 
 
@@ -150,5 +154,6 @@ def change_password_self(db: Session, *, user: User, old_password: str, new_pass
     if not verify_password(old_password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mot de passe actuel incorrect.")
     user.password_hash = hash_password(new_password)
+    user.must_change_password = False
     db.flush()
 

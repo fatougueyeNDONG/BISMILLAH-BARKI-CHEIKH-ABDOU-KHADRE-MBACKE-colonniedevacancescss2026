@@ -43,14 +43,13 @@ export default function ForcePasswordChange() {
     }
     setIsSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
+      const response = await fetch(`${API_BASE_URL}/auth/change-password-first-login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${pendingToken}`,
         },
         body: JSON.stringify({
-          old_password: 'Passer123',
           new_password: newPwd,
         }),
       });
@@ -85,7 +84,13 @@ export default function ForcePasswordChange() {
             <div>
               <h2 className="text-xl font-bold text-foreground">Changement de mot de passe obligatoire</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Bienvenue <strong>{pendingParent?.prenom} {pendingParent?.nom}</strong> ! Pour des raisons de sécurité, veuillez définir votre propre mot de passe.
+                Bienvenue
+                {pendingParent ? (
+                  <> <strong>{pendingParent.prenom} {pendingParent.nom}</strong></>
+                ) : (
+                  " dans votre espace"
+                )}
+                {" "}! Pour des raisons de sécurité, veuillez définir votre propre mot de passe.
               </p>
             </div>
           </div>

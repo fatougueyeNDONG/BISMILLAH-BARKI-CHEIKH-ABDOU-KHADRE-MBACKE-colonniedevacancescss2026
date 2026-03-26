@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Any
+import secrets
+import string
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -27,8 +29,14 @@ from app.schemas.auth import ChangePasswordIn
 from app.security import verify_password
 from app.models.models import Service  # noqa: F401
 from pydantic import ValidationError
+from app.services.email import send_email
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users"])
+
+
+def _generate_temp_password(length: int = 12) -> str:
+    alphabet = string.ascii_letters + string.digits + "!@#$%*?-_"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 @router.get("", response_model=list[UserOut])
@@ -84,15 +92,31 @@ def create_user(
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
+    temp_password = _generate_temp_password()
     user = create_user_superadmin(
         db=db,
         role=a.role,
         name=a.name,
-        password=a.password,
+        password=temp_password,
         email=str(a.email) if a.email else None,
         matricule=a.matricule,
         parent_payload=None,
+        must_change_password=True,
     )
+    if user.email:
+        send_email(
+            to=[user.email],
+            subject="Colonie 2026 — Vos identifiants temporaires",
+            body=(
+                "Bonjour,\n\n"
+                f"Votre compte administrateur a été créé.\n"
+                f"- Email: {user.email}\n"
+                f"- Mot de passe temporaire: {temp_password}\n\n"
+                "Lien de connexion: http://localhost:8080\n\n"
+                "À la première connexion, vous serez obligé de changer ce mot de passe.\n"
+                "Cordialement.\n"
+            ),
+        )
     return UserOut.model_validate(user)
 
 
@@ -110,6 +134,8 @@ def upsert_user(
         is_active=payload.is_active,
         email=payload.email,
     )
+    db.commit()
+    db.refresh(user)
     return UserOut.model_validate(user)
 
 
@@ -120,6 +146,7 @@ def deactivate_user(
     admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
     set_user_active(db, user_id=user_id, is_active=False)
+    db.commit()
     return {"ok": True}
 
 
@@ -131,6 +158,7 @@ def reset_password_user(
     admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
     change_password_for_user(db, user_id=user_id, new_password=payload.new_password)
+    db.commit()
     return {"ok": True}
 
 

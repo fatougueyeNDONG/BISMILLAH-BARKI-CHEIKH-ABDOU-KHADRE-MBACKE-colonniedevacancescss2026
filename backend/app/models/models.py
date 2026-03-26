@@ -20,6 +20,7 @@ class User(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     parent_profile: Mapped[Optional["Parent"]] = relationship(back_populates="user", uselist=False)
 

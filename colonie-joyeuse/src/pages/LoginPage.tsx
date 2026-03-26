@@ -150,6 +150,14 @@ export default function LoginPage() {
         return;
       }
 
+      if (data.must_change_password) {
+        sessionStorage.setItem('pending_access_token', data.access_token);
+        localStorage.removeItem('access_token');
+        setPendingParent(null);
+        setAuthStep('force_password_change');
+        return;
+      }
+
       loginAsAdmin(email.trim(), backendRole === 'SUPER_ADMIN' ? 'super_admin' : 'gestionnaire');
       localStorage.setItem('access_token', data.access_token);
     } catch {
