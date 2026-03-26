@@ -15,9 +15,11 @@ import { toast } from '@/hooks/use-toast';
 import ImportExcel from './ImportExcel';
 
 export default function GestionUtilisateurs() {
-  const { parents, addParent, updateParent, removeParent } = useInscription();
+  const { parents } = useInscription();
   const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || 'http://127.0.0.1:8000';
+  type ParentRow = Parent & { id: string };
   const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [parentRows, setParentRows] = useState<ParentRow[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
@@ -40,7 +42,7 @@ export default function GestionUtilisateurs() {
 
   // Edit parent
   const [editParentOpen, setEditParentOpen] = useState(false);
-  const [editingParent, setEditingParent] = useState<Parent | null>(null);
+  const [editingParent, setEditingParent] = useState<ParentRow | null>(null);
 
   // Reset password
   const [resetPwdOpen, setResetPwdOpen] = useState(false);
@@ -82,25 +84,88 @@ export default function GestionUtilisateurs() {
     setAdmins(mapped);
   };
 
+  const fetchParents = async () => {
+    const token = getToken();
+    if (!token) return;
+    const response = await fetch(`${API_BASE_URL}/admin/users`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    if (!Array.isArray(data)) return;
+    const mapped: ParentRow[] = data
+      .filter((u: any) => u.role === 'PARENT' && Boolean(u.is_active))
+      .map((u: any) => {
+        const prenom = String(u.parent_prenom || '').trim();
+        const nom = String(u.parent_nom || '').trim();
+        const fullName = String(u.name || '').trim();
+        const parts = fullName.split(/\s+/);
+        return {
+          id: String(u.id),
+          matricule: String(u.matricule || ''),
+          prenom: prenom || parts[0] || '',
+          nom: nom || parts.slice(1).join(' ') || '',
+          service: String(u.parent_service || ''),
+          site: undefined,
+          email: String(u.email || ''),
+          telephone: undefined,
+          motDePasse: '',
+          premiereConnexion: false,
+        };
+      });
+    setParentRows(mapped);
+  };
+
   useEffect(() => {
     void fetchAdmins();
+    void fetchParents();
   }, []);
 
-  const handleImportParents = (data: any[]) => {
+  const handleImportParents = async (data: any[]) => {
     let success = 0;
     const errors: { ligne: number; message: string }[] = [];
+    const token = getToken();
+    if (!token) {
+      return { success: 0, errors: [{ ligne: 1, message: 'Session expirée. Reconnectez-vous.' }] };
+    }
     data.forEach((row, i) => {
       if (!row.matricule || !row.prenom || !row.nom || !row.service) {
         errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (matricule, prenom, nom, service)' });
-        return;
       }
-      if (parents.some(p => p.matricule === row.matricule)) {
-        errors.push({ ligne: i + 2, message: `Matricule "${row.matricule}" déjà existant` });
-        return;
-      }
-      addParent({ matricule: row.matricule, prenom: row.prenom, nom: row.nom, service: row.service, site: row.site || undefined, email: row.email || undefined, telephone: row.telephone || undefined, motDePasse: 'parent123', premiereConnexion: true });
-      success++;
     });
+    for (let i = 0; i < data.length; i += 1) {
+      const row = data[i];
+      if (!row.matricule || !row.prenom || !row.nom || !row.service) continue;
+      try {
+        const response = await fetch(`${API_BASE_URL}/admin/users`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            role: 'PARENT',
+            name: `${row.prenom} ${row.nom}`.trim(),
+            matricule: row.matricule,
+            prenom: row.prenom,
+            nom: row.nom,
+            service: row.service,
+            site_code: row.site || undefined,
+            email: row.email || undefined,
+            password: row.password || 'Passer123',
+          }),
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          errors.push({ ligne: i + 2, message: payload?.detail || 'Erreur backend' });
+          continue;
+        }
+        success++;
+      } catch {
+        errors.push({ ligne: i + 2, message: 'Impossible de joindre le backend' });
+      }
+    }
+    await fetchParents();
     return { success, errors };
   };
 
@@ -246,17 +311,64 @@ export default function GestionUtilisateurs() {
 
   const handleCreateParent = () => {
     if (!newParentMatricule || !newParentPrenom || !newParentNom || !newParentService) return;
-    addParent({ matricule: newParentMatricule, prenom: newParentPrenom, nom: newParentNom, service: newParentService, site: newParentSite || undefined, motDePasse: newParentPassword, email: newParentEmail, telephone: newParentTelephone, premiereConnexion: true });
-    setCreateParentOpen(false);
-    setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentPassword('parent123'); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
-    toast({ title: '✅ Parent créé' });
+    const token = getToken();
+    if (!token) return;
+    void (async () => {
+      const response = await fetch(`${API_BASE_URL}/admin/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          role: 'PARENT',
+          name: `${newParentPrenom} ${newParentNom}`.trim(),
+          matricule: newParentMatricule,
+          prenom: newParentPrenom,
+          nom: newParentNom,
+          service: newParentService,
+          site_code: newParentSite || undefined,
+          email: newParentEmail || undefined,
+          password: newParentPassword || 'Passer123',
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        toast({ title: 'Erreur', description: data?.detail || 'Impossible de créer le parent', variant: 'destructive' });
+        return;
+      }
+      await fetchParents();
+      setCreateParentOpen(false);
+      setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentPassword('parent123'); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
+      toast({ title: '✅ Parent créé' });
+    })();
   };
 
   const handleEditParent = () => {
     if (!editingParent) return;
-    updateParent(editingParent.matricule, editingParent);
-    setEditParentOpen(false);
-    toast({ title: '✅ Parent modifié' });
+    const token = getToken();
+    if (!token) return;
+    void (async () => {
+      const response = await fetch(`${API_BASE_URL}/admin/users/${editingParent.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: `${editingParent.prenom} ${editingParent.nom}`.trim(),
+          email: editingParent.email || null,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        toast({ title: 'Erreur', description: data?.detail || 'Impossible de modifier', variant: 'destructive' });
+        return;
+      }
+      await fetchParents();
+      setEditParentOpen(false);
+      toast({ title: '✅ Parent modifié' });
+    })();
   };
 
   const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -270,7 +382,7 @@ export default function GestionUtilisateurs() {
       lines.forEach(line => {
         const [matricule, prenom, nom, service] = line.split(',').map(s => s.trim());
         if (matricule && prenom && nom && service) {
-          addParent({ matricule, prenom, nom, service, motDePasse: 'parent123' });
+          setParentRows((prev) => [...prev, { id: `${Date.now()}-${matricule}`, matricule, prenom, nom, service, motDePasse: 'parent123' } as ParentRow]);
           count++;
         }
       });
@@ -304,12 +416,28 @@ export default function GestionUtilisateurs() {
       return;
     }
     if (!resetNewPwd) return;
-    else {
-      updateParent(resetPwdTarget.id, { motDePasse: resetNewPwd });
+    {
+      const token = getToken();
+      if (!token) return;
+      void (async () => {
+        const response = await fetch(`${API_BASE_URL}/admin/users/${resetPwdTarget.id}/reset-password`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ new_password: resetNewPwd }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          toast({ title: 'Erreur', description: data?.detail || 'Impossible de réinitialiser', variant: 'destructive' });
+          return;
+        }
+        setResetPwdOpen(false);
+        setResetNewPwd('');
+        toast({ title: '✅ Mot de passe réinitialisé' });
+      })();
     }
-    setResetPwdOpen(false);
-    setResetNewPwd('');
-    toast({ title: '✅ Mot de passe réinitialisé' });
   };
 
   return (
@@ -397,21 +525,39 @@ export default function GestionUtilisateurs() {
                   <TableHead className="font-semibold">Nom</TableHead>
                   <TableHead className="font-semibold">Prénom</TableHead>
                   <TableHead className="font-semibold">Service</TableHead>
+                  <TableHead className="font-semibold">Agence</TableHead>
                   <TableHead className="font-semibold">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {parents.map(p => (
-                  <TableRow key={p.matricule}>
+                {parentRows.map(p => (
+                  <TableRow key={p.id}>
                     <TableCell className="font-mono tabular-nums text-sm">{p.matricule}</TableCell>
                     <TableCell className="font-medium">{p.nom}</TableCell>
                     <TableCell>{p.prenom}</TableCell>
                     <TableCell className="text-sm">{p.service}</TableCell>
+                    <TableCell className="text-sm">{p.site || '—'}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button size="sm" variant="ghost" onClick={() => { setEditingParent({ ...p }); setEditParentOpen(true); }} className="h-8 w-8 p-0"><Pencil className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => { setResetPwdTarget({ type: 'parent', id: p.matricule, name: `${p.prenom} ${p.nom}` }); setResetPwdOpen(true); }} className="h-8 w-8 p-0"><KeyRound className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => { removeParent(p.matricule); toast({ title: '🗑️ Parent supprimé', variant: 'destructive' }); }} className="h-8 w-8 p-0 text-destructive hover:text-destructive"><Trash2 className="w-3 h-3" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setResetPwdTarget({ type: 'parent', id: p.id, name: `${p.prenom} ${p.nom}` }); setResetPwdOpen(true); }} className="h-8 w-8 p-0"><KeyRound className="w-3 h-3" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => {
+                          const token = getToken();
+                          if (!token) return;
+                          void (async () => {
+                            const response = await fetch(`${API_BASE_URL}/admin/users/${p.id}/deactivate`, {
+                              method: 'POST',
+                              headers: { Authorization: `Bearer ${token}` },
+                            });
+                            if (!response.ok) {
+                              const data = await response.json().catch(() => ({}));
+                              toast({ title: 'Erreur', description: data?.detail || 'Impossible de supprimer', variant: 'destructive' });
+                              return;
+                            }
+                            await fetchParents();
+                            toast({ title: '🗑️ Parent supprimé', variant: 'destructive' });
+                          })();
+                        }} className="h-8 w-8 p-0 text-destructive hover:text-destructive"><Trash2 className="w-3 h-3" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>

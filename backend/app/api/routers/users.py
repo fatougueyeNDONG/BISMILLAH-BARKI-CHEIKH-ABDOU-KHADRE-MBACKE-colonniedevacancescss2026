@@ -51,7 +51,25 @@ def list_users(
         .order_by(User.id.asc())
         .all()
     )
-    return [UserOut.model_validate(u) for u in users]
+    out: list[UserOut] = []
+    for u in users:
+        payload = {
+            "id": u.id,
+            "name": u.name,
+            "role": u.role,
+            "is_active": u.is_active,
+            "email": u.email,
+            "matricule": u.matricule,
+            "parent_prenom": None,
+            "parent_nom": None,
+            "parent_service": None,
+        }
+        if u.role == UserRole.PARENT and u.parent_profile:
+            payload["parent_prenom"] = u.parent_profile.prenom
+            payload["parent_nom"] = u.parent_profile.nom
+            payload["parent_service"] = u.parent_profile.service.nom if u.parent_profile.service else None
+        out.append(UserOut.model_validate(payload))
+    return out
 
 
 @router.post("", response_model=UserOut)

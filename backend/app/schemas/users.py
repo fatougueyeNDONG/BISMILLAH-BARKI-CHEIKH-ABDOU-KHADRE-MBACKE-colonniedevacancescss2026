@@ -14,6 +14,9 @@ class UserOut(BaseModel):
     is_active: bool
     email: Optional[str] = None
     matricule: Optional[str] = None
+    parent_prenom: Optional[str] = None
+    parent_nom: Optional[str] = None
+    parent_service: Optional[str] = None
 
     class Config:
         from_attributes = True
