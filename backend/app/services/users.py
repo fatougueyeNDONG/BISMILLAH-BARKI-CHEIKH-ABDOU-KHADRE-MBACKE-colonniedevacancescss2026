@@ -118,6 +118,18 @@ def set_user_active(db: Session, *, user_id: int, is_active: bool) -> User:
     return user
 
 
+def delete_admin_user(db: Session, *, user_id: int, requester_id: int) -> None:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable.")
+    if user.role not in {UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Suppression autorisee uniquement pour les administrateurs.")
+    if user.id == requester_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vous ne pouvez pas supprimer votre propre compte.")
+    db.delete(user)
+    db.flush()
+
+
 def update_user(
     db: Session,
     *,

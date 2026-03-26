@@ -181,8 +181,8 @@ export default function GestionUtilisateurs() {
   const handleDelete = async (id: string) => {
     const token = getToken();
     if (!token) return;
-    const response = await fetch(`${API_BASE_URL}/admin/users/${id}/deactivate`, {
-      method: 'POST',
+    const response = await fetch(`${API_BASE_URL}/admin/users/${id}`, {
+      method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) {
@@ -190,8 +190,8 @@ export default function GestionUtilisateurs() {
       toast({ title: "Erreur de suppression", description: data?.detail || 'Impossible de désactiver', variant: 'destructive' });
       return;
     }
-    await fetchAdmins();
-    toast({ title: '🗑️ Utilisateur désactivé', variant: 'destructive' });
+    setAdmins((prev) => prev.filter((a) => a.id !== id));
+    toast({ title: '🗑️ Administrateur supprimé', variant: 'destructive' });
   };
 
   const handleToggleActif = async (id: string) => {

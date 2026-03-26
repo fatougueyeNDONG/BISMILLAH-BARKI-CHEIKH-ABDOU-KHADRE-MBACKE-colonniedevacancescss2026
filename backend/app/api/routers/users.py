@@ -22,6 +22,7 @@ from app.services.users import (
     change_password_for_user,
     change_password_self,
     create_user_superadmin,
+    delete_admin_user,
     set_user_active,
     update_user,
 )
@@ -112,9 +113,19 @@ def create_user(
                 f"Votre compte administrateur a été créé.\n"
                 f"- Email: {user.email}\n"
                 f"- Mot de passe temporaire: {temp_password}\n\n"
-                "Lien de connexion: http://localhost:8080\n\n"
+                "Veuillez cliquer ici pour vous connecter: http://localhost:8080\n\n"
                 "À la première connexion, vous serez obligé de changer ce mot de passe.\n"
                 "Cordialement.\n"
+            ),
+            html_body=(
+                "<p>Bonjour,</p>"
+                f"<p>Votre compte administrateur a été créé.<br>"
+                f"- Email: {user.email}<br>"
+                f"- Mot de passe temporaire: {temp_password}</p>"
+                '<p>Veuillez vous connecter à l\'application en cliquant sur ce lien : '
+                '<a href="http://localhost:8080/?force_login=1">Accéder à l\'application</a>.</p>'
+                "<p>À la première connexion, vous serez obligé de changer ce mot de passe.<br>"
+                "Cordialement.</p>"
             ),
         )
     return UserOut.model_validate(user)
@@ -146,6 +157,17 @@ def deactivate_user(
     admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
     set_user_active(db, user_id=user_id, is_active=False)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{user_id}")
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+):
+    delete_admin_user(db, user_id=user_id, requester_id=admin.id)
     db.commit()
     return {"ok": True}
 

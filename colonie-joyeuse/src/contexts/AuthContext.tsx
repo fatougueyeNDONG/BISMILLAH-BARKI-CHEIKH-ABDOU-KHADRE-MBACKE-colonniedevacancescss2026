@@ -27,6 +27,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [pendingParent, setPendingParent] = useState<Parent | null>(null);
 
   useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('force_login') === '1') {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('parent_matricule');
+      localStorage.removeItem('admin_email');
+      sessionStorage.removeItem('pending_access_token');
+      setRole(null);
+      setParent(null);
+      setAdminEmail(null);
+      setAuthStep('logged_out');
+      setPendingParent(null);
+      url.searchParams.delete('force_login');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      return;
+    }
+
     const token = localStorage.getItem('access_token');
     if (!token) return;
     const hydrateFromToken = async () => {

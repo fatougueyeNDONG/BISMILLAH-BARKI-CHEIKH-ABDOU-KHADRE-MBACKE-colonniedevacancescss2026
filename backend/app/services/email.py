@@ -12,7 +12,7 @@ def _is_configured() -> bool:
     return bool(s.smtp_host and s.smtp_from)
 
 
-def send_email(*, to: Sequence[str], subject: str, body: str) -> None:
+def send_email(*, to: Sequence[str], subject: str, body: str, html_body: str | None = None) -> None:
     """
     Envoi SMTP simple.
     - Si SMTP n'est pas configuré, on ne fait rien (no-op) pour ne pas casser l’API.
@@ -28,6 +28,8 @@ def send_email(*, to: Sequence[str], subject: str, body: str) -> None:
     msg["To"] = ", ".join(to)
     msg["Subject"] = subject
     msg.set_content(body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
 
     with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=20) as smtp:
         smtp.ehlo()
