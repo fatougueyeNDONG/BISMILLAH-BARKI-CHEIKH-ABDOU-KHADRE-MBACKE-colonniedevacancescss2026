@@ -480,6 +480,123 @@ def swap_rang(
     return {"ok": True, "liste_id": d1.liste_id, "rang1": d2.rang_dans_liste, "rang2": d1.rang_dans_liste}
 
 
+@router.get("/historique", summary="Historique consolidé (gestionnaire / super admin)")
+def historique_actions(
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN)),
+):
+    safe_limit = max(1, min(limit, 500))
+
+    events: list[dict] = []
+
+    def _push_event(*, key: str, when: datetime | None, utilisateur: str, role_label: str, action: str, details: str, cible: str | None):
+        if when is None:
+            return
+        local_when = when.astimezone() if when.tzinfo else when
+        events.append(
+            {
+                "id": key,
+                "timestamp": local_when,
+                "date": local_when.date().isoformat(),
+                "heure": local_when.strftime("%H:%M"),
+                "utilisateur": utilisateur,
+                "role": role_label,
+                "action": action,
+                "details": details,
+                "cible": cible,
+            }
+        )
+
+    demandes = (
+        db.query(DemandeInscription)
+        .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
+        .join(Parent, Parent.id == Enfant.parent_id)
+        .join(Liste, Liste.id == DemandeInscription.liste_id)
+        .order_by(DemandeInscription.date_inscription.desc())
+        .limit(safe_limit)
+        .all()
+    )
+
+    for d in demandes:
+        enfant = d.enfant
+        parent = enfant.parent
+        cible = f"{enfant.prenom} {enfant.nom}"
+
+        _push_event(
+            key=f"inscription_{d.id}",
+            when=d.date_inscription,
+            utilisateur=parent.matricule,
+            role_label="Parent",
+            action="Inscription",
+            details=f"Inscription de {cible} dans {d.liste.code.value}",
+            cible=cible,
+        )
+
+        if d.selected_at is not None and d.selected_by is not None:
+            selected_by = d.selected_by.email or f"admin#{d.selected_by.id}"
+            if d.statut == DemandeStatut.NON_VALIDEE:
+                reason = f" Motif : {d.non_validation_reason}" if d.non_validation_reason else ""
+                detail = f"Demande refusée pour {cible}.{reason}"
+                action = "Refus"
+            else:
+                detail = f"Demande validée pour {cible}."
+                action = "Validation"
+            _push_event(
+                key=f"selection_{d.id}",
+                when=d.selected_at,
+                utilisateur=selected_by,
+                role_label="Admin",
+                action=action,
+                details=detail,
+                cible=cible,
+            )
+
+    desistements = (
+        db.query(Desistement)
+        .join(DemandeInscription, DemandeInscription.id == Desistement.demande_inscription_id)
+        .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
+        .join(Parent, Parent.id == Enfant.parent_id)
+        .order_by(Desistement.requested_at.desc())
+        .limit(safe_limit)
+        .all()
+    )
+
+    for d in desistements:
+        demande = d.demande_inscription
+        enfant = demande.enfant
+        parent = enfant.parent
+        cible = f"{enfant.prenom} {enfant.nom}"
+
+        _push_event(
+            key=f"desist_req_{d.id}",
+            when=d.requested_at,
+            utilisateur=parent.matricule,
+            role_label="Parent",
+            action="Désistement demandé",
+            details=f"Désistement demandé pour {cible}.",
+            cible=cible,
+        )
+
+        if d.validated and d.validated_at is not None and d.validated_by is not None:
+            validated_by = d.validated_by.email or f"admin#{d.validated_by.id}"
+            _push_event(
+                key=f"desist_val_{d.id}",
+                when=d.validated_at,
+                utilisateur=validated_by,
+                role_label="Admin",
+                action="Désistement validé",
+                details=f"Désistement validé pour {cible}.",
+                cible=cible,
+            )
+
+    events.sort(key=lambda e: e["timestamp"], reverse=True)
+    trimmed = events[:safe_limit]
+    for e in trimmed:
+        e.pop("timestamp", None)
+    return trimmed
+
+
 @router.get("/desistements/en-attente")
 def desistements_en_attente(
     db: Session = Depends(get_db),

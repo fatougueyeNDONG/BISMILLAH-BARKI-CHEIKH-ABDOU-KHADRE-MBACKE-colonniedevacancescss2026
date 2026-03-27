@@ -1,16 +1,42 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { useInscription } from '@/contexts/InscriptionContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Filter, History } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+type HistoriqueRow = {
+  id: string;
+  date: string;
+  heure: string;
+  utilisateur: string;
+  role: string;
+  action: string;
+  details: string;
+  cible?: string | null;
+};
 
 export default function Historique() {
-  const { historique } = useInscription();
+  const { token } = useAuth();
+  const [historique, setHistorique] = useState<HistoriqueRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+
+  useEffect(() => {
+    const loadHistorique = async () => {
+      if (!token) return;
+      try {
+        const rows = await apiRequest<HistoriqueRow[]>('/admin/historique?limit=300', { token });
+        setHistorique(rows);
+      } catch {
+        setHistorique([]);
+      }
+    };
+    loadHistorique();
+  }, [token]);
 
   const filtered = historique.filter(h => {
     const matchSearch = searchTerm === '' ||
