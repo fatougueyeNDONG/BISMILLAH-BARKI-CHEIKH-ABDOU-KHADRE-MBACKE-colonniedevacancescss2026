@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge, Enfant } from '@/data/mockData';
+import { Enfant } from '@/data/mockData';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FileDown, Eye, Search, Filter, ArrowRightLeft, CheckCircle2, HandMetal, ThumbsUp, ThumbsDown } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import { exportStyledExcel } from '@/lib/excelExport';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,12 +20,20 @@ interface Props {
 }
 
 export default function GestionListe({ type }: Props) {
-  const { getEnfantsByListe, transfererEnfant, validerDesistement, validerEnfant, refuserEnfant, parents, getRangDansListe, isListeFinaleComplete, addHistorique, settings } = useInscription();
+  const { getEnfantsByListe, transfererEnfant, validerDesistement, validerEnfant, refuserEnfant, parents, getRangDansListe, isListeFinaleComplete, settings } = useInscription();
   const enfants = getEnfantsByListe(type);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSexe, setFilterSexe] = useState<string>('all');
   const [filterDesistement, setFilterDesistement] = useState<string>('all');
-  const [filterReinscrit, setFilterReinscrit] = useState<string>('all');
+  const calculateAge = (dateNaissance: string) => {
+    const birthDate = new Date(dateNaissance);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
+    return age;
+  };
+
   const [detailEnfant, setDetailEnfant] = useState<Enfant | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferTarget, setTransferTarget] = useState<Enfant | null>(null);
@@ -91,38 +98,50 @@ export default function GestionListe({ type }: Props) {
     return matchSearch && matchSexe && matchDesist;
   });
 
-  const handleTransfer = () => {
+  const handleTransfer = async () => {
     if (!transferTarget || !transferListe) return;
-    transfererEnfant(transferTarget.id, transferListe as any);
-    addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Transfert', details: `A transféré ${transferTarget.prenom} ${transferTarget.nom} vers ${titles[transferListe] || transferListe}`, cible: `${transferTarget.prenom} ${transferTarget.nom}` });
-    toast({ title: '✅ Demande transférée', description: `${transferTarget.prenom} ${transferTarget.nom} a été transféré(e) vers la ${titles[transferListe] || transferListe}.` });
-    setTransferOpen(false); setTransferTarget(null); setTransferListe('');
+    try {
+      await transfererEnfant(transferTarget.id, transferListe as any);
+      toast({ title: '✅ Demande transférée', description: `${transferTarget.prenom} ${transferTarget.nom} a été transféré(e) vers la ${titles[transferListe] || transferListe}.` });
+      setTransferOpen(false); setTransferTarget(null); setTransferListe('');
+    } catch (error) {
+      toast({ title: '❌ Erreur', description: error instanceof Error ? error.message : "Échec du transfert.", variant: 'destructive' });
+    }
   };
 
-  const handleValiderDesistement = () => {
+  const handleValiderDesistement = async () => {
     if (!desistTarget) return;
-    validerDesistement(desistTarget.id);
-    addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Validation désistement', details: `A validé le désistement de ${desistTarget.prenom} ${desistTarget.nom}`, cible: `${desistTarget.prenom} ${desistTarget.nom}` });
-    toast({ title: '✅ Désistement validé', description: `Le désistement de ${desistTarget.prenom} ${desistTarget.nom} a été validé.` });
-    setConfirmDesistOpen(false); setDesistTarget(null);
+    try {
+      await validerDesistement(desistTarget.id);
+      toast({ title: '✅ Désistement validé', description: `Le désistement de ${desistTarget.prenom} ${desistTarget.nom} a été validé.` });
+      setConfirmDesistOpen(false); setDesistTarget(null);
+    } catch (error) {
+      toast({ title: '❌ Erreur', description: error instanceof Error ? error.message : "Échec de validation du désistement.", variant: 'destructive' });
+    }
   };
 
-  const handleValider = (enfant: Enfant) => {
+  const handleValider = async (enfant: Enfant) => {
     if (isListeFinaleComplete()) {
       toast({ title: '⚠️ Liste finale complète', description: `Impossible de valider. La liste finale a atteint sa capacité maximale de ${settings.capaciteMax} enfants. Le Super Admin peut augmenter la capacité dans les Paramètres.`, variant: 'destructive' });
       return;
     }
-    validerEnfant(enfant.id);
-    addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Approbation', details: `A validé la demande de ${enfant.prenom} ${enfant.nom} — Liste finale`, cible: `${enfant.prenom} ${enfant.nom}` });
-    toast({ title: '✅ Demande validée', description: `${enfant.prenom} ${enfant.nom} a été ajouté(e) à la liste finale des retenus.` });
+    try {
+      await validerEnfant(enfant.id);
+      toast({ title: '✅ Demande validée', description: `${enfant.prenom} ${enfant.nom} a été ajouté(e) à la liste finale des retenus.` });
+    } catch (error) {
+      toast({ title: '❌ Erreur', description: error instanceof Error ? error.message : "Échec de validation de la demande.", variant: 'destructive' });
+    }
   };
 
-  const handleRefuser = () => {
+  const handleRefuser = async () => {
     if (!refusTarget || !motifRefus.trim()) return;
-    refuserEnfant(refusTarget.id, motifRefus.trim());
-    addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Refus', details: `A refusé la demande de ${refusTarget.prenom} ${refusTarget.nom}. Motif : ${motifRefus.trim()}`, cible: `${refusTarget.prenom} ${refusTarget.nom}` });
-    toast({ title: '❌ Demande refusée', description: `${refusTarget.prenom} ${refusTarget.nom} — Motif : ${motifRefus}` });
-    setRefusOpen(false); setRefusTarget(null); setMotifRefus('');
+    try {
+      await refuserEnfant(refusTarget.id, motifRefus.trim());
+      toast({ title: '❌ Demande refusée', description: `${refusTarget.prenom} ${refusTarget.nom} — Motif : ${motifRefus}` });
+      setRefusOpen(false); setRefusTarget(null); setMotifRefus('');
+    } catch (error) {
+      toast({ title: '❌ Erreur', description: error instanceof Error ? error.message : "Échec du refus de la demande.", variant: 'destructive' });
+    }
   };
 
   const generateCSV = () => {

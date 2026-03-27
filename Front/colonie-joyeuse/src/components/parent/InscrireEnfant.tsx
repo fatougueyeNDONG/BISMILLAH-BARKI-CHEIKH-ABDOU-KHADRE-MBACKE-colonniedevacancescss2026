@@ -12,7 +12,7 @@ import { AlertTriangle, CheckCircle2, UserPlus, Star, Clock, PartyPopper } from 
 
 export default function InscrireEnfant() {
   const { parent, token } = useAuth();
-  const { getEnfantsByParent, addEnfant, settings, addHistorique } = useInscription();
+  const { getEnfantsByParent, addEnfant, settings } = useInscription();
   const [sites, setSites] = useState<Array<{ id: number; nom: string; code: string }>>([]);
 
   const [prenom, setPrenom] = useState('');
@@ -132,14 +132,6 @@ export default function InscrireEnfant() {
       setErrorOpen(true);
       return;
     }
-    addHistorique({
-      utilisateur: `${parent.prenom} ${parent.nom}`,
-      role: 'Parent',
-      action: 'Inscription',
-      details: `A inscrit ${prenom.trim()} ${nom.trim()} en ${liste === 'principale' ? 'Liste Principale' : liste === 'attente_n1' ? "Liste N°1" : "Liste N°2"}`,
-      cible: `${prenom.trim()} ${nom.trim()}`,
-    });
-
     const listeLabel = liste === 'principale' ? 'Liste Principale (Titulaire)' : liste === 'attente_n1' ? "Liste d'Attente N°1 (Suppléant)" : "Liste d'Attente N°2";
     const isLastChild = MAX_ENFANTS !== null && nbInscrits + 1 >= MAX_ENFANTS;
 

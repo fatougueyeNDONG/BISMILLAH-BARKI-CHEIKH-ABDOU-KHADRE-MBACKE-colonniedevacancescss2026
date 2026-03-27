@@ -1,20 +1,45 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { MOCK_PARENTS } from '@/data/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 import { Users, UserCheck, BarChart3, TrendingUp } from 'lucide-react';
 
 export default function Statistiques() {
-  const { enfants } = useInscription();
+  const { enfants, parents } = useInscription();
+  const { token, role } = useAuth();
+  const [statsApi, setStatsApi] = useState<{
+    total_parents: number;
+    total_enfants: number;
+    selected_by_liste: Record<string, number>;
+  } | null>(null);
 
-  const principale = enfants.filter(e => e.liste === 'principale').length;
-  const n1 = enfants.filter(e => e.liste === 'attente_n1').length;
-  const n2 = enfants.filter(e => e.liste === 'attente_n2').length;
+  useEffect(() => {
+    const loadStats = async () => {
+      if (!token || (role !== 'gestionnaire' && role !== 'super_admin')) return;
+      try {
+        const payload = await apiRequest<{
+          total_parents: number;
+          total_enfants: number;
+          selected_by_liste: Record<string, number>;
+        }>('/admin/stats', { token });
+        setStatsApi(payload);
+      } catch {
+        setStatsApi(null);
+      }
+    };
+    loadStats();
+  }, [token, role]);
+
+  const principale = statsApi?.selected_by_liste?.PRINCIPALE ?? enfants.filter(e => e.liste === 'principale').length;
+  const n1 = statsApi?.selected_by_liste?.ATTENTE_N1 ?? enfants.filter(e => e.liste === 'attente_n1').length;
+  const n2 = statsApi?.selected_by_liste?.ATTENTE_N2 ?? enfants.filter(e => e.liste === 'attente_n2').length;
   const garcons = enfants.filter(e => e.sexe === 'M').length;
   const filles = enfants.filter(e => e.sexe === 'F').length;
-  const totalParents = new Set(enfants.map(e => e.parentMatricule)).size;
+  const totalParents = statsApi?.total_parents ?? new Set(enfants.map(e => e.parentMatricule)).size;
+  const totalEnfants = statsApi?.total_enfants ?? enfants.length;
 
-  const serviceStats = MOCK_PARENTS.reduce((acc, p) => {
+  const serviceStats = parents.reduce((acc, p) => {
     const count = enfants.filter(e => e.parentMatricule === p.matricule).length;
     if (count > 0) {
       acc[p.service] = (acc[p.service] || 0) + count;
@@ -31,7 +56,7 @@ export default function Statistiques() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Total enfants', value: enfants.length, icon: Users, color: 'text-primary', bg: 'bg-primary/10' },
+          { label: 'Total enfants', value: totalEnfants, icon: Users, color: 'text-primary', bg: 'bg-primary/10' },
           { label: 'Parents inscrits', value: totalParents, icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
           { label: 'Garçons', value: garcons, icon: BarChart3, color: 'text-primary', bg: 'bg-primary/10' },
           { label: 'Filles', value: filles, icon: TrendingUp, color: 'text-accent', bg: 'bg-accent/10' },

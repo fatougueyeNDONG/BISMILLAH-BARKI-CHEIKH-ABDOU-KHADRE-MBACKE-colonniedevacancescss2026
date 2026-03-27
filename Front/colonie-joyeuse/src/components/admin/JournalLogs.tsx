@@ -4,7 +4,6 @@ import { useInscription } from '@/contexts/InscriptionContext';
 import { Database, Server, Activity, Upload, FileUp, Shield, RefreshCw, Wrench, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
-import { Parent } from '@/data/mockData';
 
 const tabs = [
   { id: 'systeme', label: 'État système', icon: Activity },
@@ -14,7 +13,7 @@ const tabs = [
 ];
 
 export default function JournalLogs() {
-  const { enfants, parents, settings, historique, addParent, addHistorique } = useInscription();
+  const { enfants, parents, settings, historique } = useInscription();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
@@ -62,60 +61,11 @@ export default function JournalLogs() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.name.endsWith('.csv')) {
-      toast({ title: '⚠️ Format invalide', description: 'Veuillez sélectionner un fichier CSV.', variant: 'destructive' });
-      return;
-    }
     setUploading(true);
     setUploadResult(null);
-    try {
-      const text = await file.text();
-      const lines = text.split('\n').filter(l => l.trim());
-      if (lines.length < 2) {
-        toast({ title: '⚠️ Fichier vide', description: 'Le fichier CSV ne contient pas de données.', variant: 'destructive' });
-        setUploading(false);
-        return;
-      }
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-      let imported = 0;
-      const errors: string[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const vals = lines[i].split(',').map(v => v.trim());
-        if (vals.length < 4) { errors.push(`Ligne ${i + 1}: colonnes insuffisantes`); continue; }
-        const matriculeIdx = headers.indexOf('matricule');
-        const prenomIdx = headers.indexOf('prenom');
-        const nomIdx = headers.indexOf('nom');
-        const serviceIdx = headers.indexOf('service');
-        const emailIdx = headers.indexOf('email');
-        const telephoneIdx = headers.indexOf('telephone');
-        if (matriculeIdx === -1 || prenomIdx === -1 || nomIdx === -1 || serviceIdx === -1) {
-          errors.push(`Ligne ${i + 1}: colonnes manquantes`);
-          continue;
-        }
-        const newParent: Parent = {
-          matricule: vals[matriculeIdx],
-          prenom: vals[prenomIdx],
-          nom: vals[nomIdx],
-          service: vals[serviceIdx],
-          motDePasse: '',
-          email: emailIdx !== -1 ? vals[emailIdx] : undefined,
-          telephone: telephoneIdx !== -1 ? vals[telephoneIdx] : undefined,
-          premiereConnexion: true,
-        };
-        if (parents.find(p => p.matricule === newParent.matricule)) {
-          errors.push(`Ligne ${i + 1}: matricule ${newParent.matricule} existe déjà`);
-          continue;
-        }
-        addParent(newParent);
-        imported++;
-      }
-      const resultMsg = `${imported} parent(s) importé(s).${errors.length > 0 ? ` ${errors.length} erreur(s).` : ''}`;
-      setUploadResult(resultMsg);
-      addHistorique({ utilisateur: 'Super Admin', role: 'Admin', action: 'Import CSV', details: `A importé ${imported} parent(s) depuis un fichier CSV`, cible: file.name });
-      toast({ title: '✅ Import terminé', description: resultMsg });
-    } catch {
-      toast({ title: '❌ Erreur', description: 'Erreur lors de la lecture du fichier.', variant: 'destructive' });
-    }
+    await file.text();
+    setUploadResult('Import local désactivé: utilisez l’endpoint backend dédié.');
+    toast({ title: 'ℹ️ Import non disponible', description: "Aucune donnée n'est injectée localement. Utilisez le backend pour l'import.", variant: 'destructive' });
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge, Enfant } from '@/data/mockData';
+import { Enfant } from '@/data/mockData';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FileDown, Search, Filter, Eye, Award, CheckCircle2, HandMetal, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,11 +12,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import { exportStyledExcel } from '@/lib/excelExport';
 
 export default function ListeFinale() {
-  const { getListeFinale, getEnfantsDesistesFinale, validerDesistement, parents, settings, addHistorique, isListeFinaleComplete } = useInscription();
+  const { getListeFinale, getEnfantsDesistesFinale, validerDesistement, parents, settings, isListeFinaleComplete } = useInscription();
   const enfantsRetenus = getListeFinale();
   const enfantsDesistes = getEnfantsDesistesFinale();
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,6 +27,15 @@ export default function ListeFinale() {
 
   const capaciteLabel = settings.capaciteMax !== null ? settings.capaciteMax : '∞';
   const isComplete = isListeFinaleComplete();
+
+  const calculateAge = (dateNaissance: string) => {
+    const birthDate = new Date(dateNaissance);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
+    return age;
+  };
 
   const getStatutBadge = (statut: string) => {
     switch (statut) {
@@ -61,12 +69,15 @@ export default function ListeFinale() {
   const filteredRetenus = filterList(enfantsRetenus);
   const filteredDesistes = filterList(enfantsDesistes);
 
-  const handleValiderDesistement = () => {
+  const handleValiderDesistement = async () => {
     if (!desistTarget) return;
-    validerDesistement(desistTarget.id);
-    addHistorique({ utilisateur: 'Gestionnaire', role: 'Admin', action: 'Validation désistement (finale)', details: `A validé le désistement de ${desistTarget.prenom} ${desistTarget.nom} depuis la liste finale`, cible: `${desistTarget.prenom} ${desistTarget.nom}` });
-    toast({ title: '✅ Désistement validé', description: `${desistTarget.prenom} ${desistTarget.nom} a été retiré(e) de la liste finale.` });
-    setConfirmDesistOpen(false); setDesistTarget(null);
+    try {
+      await validerDesistement(desistTarget.id);
+      toast({ title: '✅ Désistement validé', description: `${desistTarget.prenom} ${desistTarget.nom} a été retiré(e) de la liste finale.` });
+      setConfirmDesistOpen(false); setDesistTarget(null);
+    } catch (error) {
+      toast({ title: '❌ Erreur', description: error instanceof Error ? error.message : 'Échec de validation du désistement.', variant: 'destructive' });
+    }
   };
 
   const exportList = (list: Enfant[], filename: string, format: 'csv' | 'pdf', isDesistes = false) => {

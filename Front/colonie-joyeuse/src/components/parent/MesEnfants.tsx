@@ -17,7 +17,7 @@ function calculateAge(dateNaissance: string): number {
 
 export default function MesEnfants() {
   const { parent } = useAuth();
-  const { getEnfantsByParent, setTitulaire, demanderDesistement, annulerDesistement, reinscrireEnfant, getListeFinale, addHistorique, settings } = useInscription();
+  const { getEnfantsByParent, setTitulaire, demanderDesistement, annulerDesistement, reinscrireEnfant, getListeFinale, settings } = useInscription();
 
   const now = new Date();
   const dateFin = settings.dateFinInscriptions ? new Date(settings.dateFinInscriptions + 'T23:59:59') : null;
@@ -49,7 +49,6 @@ export default function MesEnfants() {
       setConfirmOpen(false);
       return;
     }
-    addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Changement titulaire', details: `A défini ${selectedName} comme titulaire`, cible: selectedName });
     setConfirmOpen(false);
   };
 
@@ -63,7 +62,6 @@ export default function MesEnfants() {
       setDesistementOpen(false);
       return;
     }
-    addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Désistement demandé', details: `A demandé le désistement de ${desistementName}`, cible: desistementName });
     setDesistementOpen(false);
   };
 
@@ -80,7 +78,6 @@ export default function MesEnfants() {
       setActionErrorOpen(true);
       return;
     }
-    addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Annulation désistement', details: `A annulé le désistement de ${enfant?.prenom} ${enfant?.nom}`, cible: `${enfant?.prenom} ${enfant?.nom}` });
   };
 
   const handleReinscrire = (id: string, name: string) => { setReinscrireId(id); setReinscireName(name); setReinscrireOpen(true); };
@@ -93,7 +90,6 @@ export default function MesEnfants() {
       setReinscrireOpen(false);
       return;
     }
-    addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Réinscription', details: `A réinscrit ${reinscireName} après désistement`, cible: reinscireName });
     setReinscrireOpen(false);
   };
 

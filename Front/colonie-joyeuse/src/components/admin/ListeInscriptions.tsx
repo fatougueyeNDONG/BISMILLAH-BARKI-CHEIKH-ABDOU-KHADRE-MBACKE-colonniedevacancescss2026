@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge } from '@/data/mockData';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FileDown, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,6 +12,15 @@ import { exportStyledExcel } from '@/lib/excelExport';
 export default function ListeInscriptions() {
   const { enfants, parents } = useInscription();
   const [searchTerm, setSearchTerm] = useState('');
+
+  const calculateAge = (dateNaissance: string) => {
+    const birthDate = new Date(dateNaissance);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
+    return age;
+  };
 
   const sortedEnfants = [...enfants].sort((a, b) =>
     new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime()
