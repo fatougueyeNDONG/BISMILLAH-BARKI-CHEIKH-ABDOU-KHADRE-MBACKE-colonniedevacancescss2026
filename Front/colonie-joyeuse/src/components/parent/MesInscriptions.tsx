@@ -2,9 +2,17 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge } from '@/data/mockData';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Info, CheckCircle2, XCircle, Clock, Phone } from 'lucide-react';
+
+function calculateAge(dateNaissance: string): number {
+  const birth = new Date(dateNaissance);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
 
 export default function MesInscriptions() {
   const { parent } = useAuth();

@@ -2,10 +2,18 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge } from '@/data/mockData';
 import { Star, ArrowUpDown, User, HandMetal, AlertTriangle, CheckCircle2, Award, XCircle, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+
+function calculateAge(dateNaissance: string): number {
+  const birth = new Date(dateNaissance);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
 
 export default function MesEnfants() {
   const { parent } = useAuth();
@@ -24,38 +32,67 @@ export default function MesEnfants() {
   const [reinscrireId, setReinscrireId] = useState('');
   const [reinscireName, setReinscireName] = useState('');
   const [cancelDesistError, setCancelDesistError] = useState(false);
+  const [actionErrorOpen, setActionErrorOpen] = useState(false);
+  const [actionErrorMessage, setActionErrorMessage] = useState('');
 
   if (!parent) return null;
   const enfants = getEnfantsByParent(parent.matricule);
   const listeFinale = getListeFinale();
 
   const handleSetTitulaire = (id: string, name: string) => { setSelectedId(id); setSelectedName(name); setConfirmOpen(true); };
-  const confirmChange = () => {
-    setTitulaire(parent.matricule, selectedId);
+  const confirmChange = async () => {
+    try {
+      await setTitulaire(parent.matricule, selectedId);
+    } catch (error) {
+      setActionErrorMessage(error instanceof Error ? error.message : 'Action impossible');
+      setActionErrorOpen(true);
+      setConfirmOpen(false);
+      return;
+    }
     addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Changement titulaire', details: `A défini ${selectedName} comme titulaire`, cible: selectedName });
     setConfirmOpen(false);
   };
 
   const handleDesistement = (id: string, name: string) => { setDesistementId(id); setDesistementName(name); setDesistementOpen(true); };
-  const confirmDesistement = () => {
-    demanderDesistement(desistementId);
+  const confirmDesistement = async () => {
+    try {
+      await demanderDesistement(desistementId);
+    } catch (error) {
+      setActionErrorMessage(error instanceof Error ? error.message : 'Action impossible');
+      setActionErrorOpen(true);
+      setDesistementOpen(false);
+      return;
+    }
     addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Désistement demandé', details: `A demandé le désistement de ${desistementName}`, cible: desistementName });
     setDesistementOpen(false);
   };
 
-  const handleAnnulerDesistement = (id: string) => {
+  const handleAnnulerDesistement = async (id: string) => {
     const enfant = enfants.find(e => e.id === id);
     if (enfant?.desistement === 'validé') {
       setCancelDesistError(true);
       return;
     }
-    annulerDesistement(id);
+    try {
+      await annulerDesistement(id);
+    } catch (error) {
+      setActionErrorMessage(error instanceof Error ? error.message : 'Action impossible');
+      setActionErrorOpen(true);
+      return;
+    }
     addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Annulation désistement', details: `A annulé le désistement de ${enfant?.prenom} ${enfant?.nom}`, cible: `${enfant?.prenom} ${enfant?.nom}` });
   };
 
   const handleReinscrire = (id: string, name: string) => { setReinscrireId(id); setReinscireName(name); setReinscrireOpen(true); };
-  const confirmReinscrire = () => {
-    reinscrireEnfant(reinscrireId);
+  const confirmReinscrire = async () => {
+    try {
+      await reinscrireEnfant(reinscrireId);
+    } catch (error) {
+      setActionErrorMessage(error instanceof Error ? error.message : 'Action impossible');
+      setActionErrorOpen(true);
+      setReinscrireOpen(false);
+      return;
+    }
     addHistorique({ utilisateur: `${parent.prenom} ${parent.nom}`, role: 'Parent', action: 'Réinscription', details: `A réinscrit ${reinscireName} après désistement`, cible: reinscireName });
     setReinscrireOpen(false);
   };
@@ -197,6 +234,16 @@ export default function MesEnfants() {
             <Button variant="outline" onClick={() => setConfirmOpen(false)} className="rounded-lg">Annuler</Button>
             <Button onClick={confirmChange} className="rounded-lg bg-accent text-white hover:bg-accent/90">Confirmer</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={actionErrorOpen} onOpenChange={setActionErrorOpen}>
+        <DialogContent className="sm:max-w-md rounded-xl">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Action impossible</DialogTitle>
+            <DialogDescription className="pt-2">{actionErrorMessage}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter><Button onClick={() => setActionErrorOpen(false)} className="rounded-lg">Compris</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 

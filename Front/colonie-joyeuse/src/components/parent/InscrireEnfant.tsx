@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { MOCK_SITES } from '@/data/mockData';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
+import { apiRequest } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,8 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertTriangle, CheckCircle2, UserPlus, Star, Clock, PartyPopper } from 'lucide-react';
 
 export default function InscrireEnfant() {
-  const { parent } = useAuth();
+  const { parent, token } = useAuth();
   const { getEnfantsByParent, addEnfant, settings, addHistorique } = useInscription();
+  const [sites, setSites] = useState<Array<{ id: number; nom: string; code: string }>>([]);
 
   const [prenom, setPrenom] = useState('');
   const [nom, setNom] = useState('');
@@ -31,6 +32,19 @@ export default function InscrireEnfant() {
   const [showNextPrompt, setShowNextPrompt] = useState(false);
   const [showMaxReachedPopup, setShowMaxReachedPopup] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    const loadSites = async () => {
+      if (!token) return;
+      try {
+        const data = await apiRequest<Array<{ id: number; nom: string; code: string }>>('/admin/sites', { token });
+        setSites(data);
+      } catch {
+        setSites([]);
+      }
+    };
+    loadSites();
+  }, [token]);
 
   if (!parent) return null;
 
@@ -65,7 +79,7 @@ export default function InscrireEnfant() {
       setErrorOpen(true);
       return;
     }
-    if (!prenom.trim() || !nom.trim() || !dateNaissance || !sexe || !lienParente || !telephone.trim() || !email.trim() || !site) {
+    if (!prenom.trim() || !nom.trim() || !dateNaissance || !sexe || !lienParente || !telephone.trim() || !site) {
       setErrorTitle("Champs requis");
       setErrorMessage("Veuillez remplir tous les champs obligatoires du formulaire.");
       setErrorOpen(true);
@@ -81,7 +95,7 @@ export default function InscrireEnfant() {
     setConfirmOpen(true);
   };
 
-  const confirmInscription = () => {
+  const confirmInscription = async () => {
     setConfirmOpen(false);
 
     let liste: 'principale' | 'attente_n1' | 'attente_n2';
@@ -110,7 +124,14 @@ export default function InscrireEnfant() {
       validation: 'en_attente' as const,
     };
 
-    addEnfant(newEnfant);
+    try {
+      await addEnfant(newEnfant);
+    } catch (error) {
+      setErrorTitle("Échec de l'inscription");
+      setErrorMessage(error instanceof Error ? error.message : "Impossible d'enregistrer l'inscription.");
+      setErrorOpen(true);
+      return;
+    }
     addHistorique({
       utilisateur: `${parent.prenom} ${parent.nom}`,
       role: 'Parent',
@@ -205,7 +226,7 @@ export default function InscrireEnfant() {
                 <Input value={parent.nom} disabled className="bg-muted/50" />
               </div>
               <div className="space-y-2">
-                <Label className="text-foreground">Email *</Label>
+                <Label className="text-foreground">Email</Label>
                 <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className="h-11 rounded-lg" />
               </div>
               <div className="space-y-2">
@@ -217,7 +238,7 @@ export default function InscrireEnfant() {
                 <Select value={site} onValueChange={setSite}>
                   <SelectTrigger className="h-11 rounded-lg"><SelectValue placeholder="Sélectionner une agence" /></SelectTrigger>
                   <SelectContent>
-                    {MOCK_SITES.filter(s => s.actif).map(s => (
+                    {sites.map(s => (
                       <SelectItem key={s.id} value={s.code}>{s.nom}</SelectItem>
                     ))}
                   </SelectContent>

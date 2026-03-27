@@ -2,8 +2,16 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { calculateAge } from '@/data/mockData';
 import { Users, UserCheck, Clock, Star, Award, AlertTriangle, Lock } from 'lucide-react';
+
+function calculateAge(dateNaissance: string): number {
+  const birth = new Date(dateNaissance);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
 
 export default function ParentDashboard() {
   const { parent } = useAuth();
@@ -15,6 +23,7 @@ export default function ParentDashboard() {
   const inscriptionsCloturees = dateFin ? now > dateFin : false;
 
   const MAX = settings.maxEnfantsParParent;
+  const maxForUi = MAX ?? 0;
   const enfants = getEnfantsByParent(parent.matricule);
   const allDesistes = inscriptionsCloturees && enfants.length > 0 && enfants.every(e => e.desistement === 'validé');
   const titulaire = enfants.find(e => e.statut === 'Titulaire');
@@ -33,7 +42,7 @@ export default function ParentDashboard() {
   // Show slots that have an enfant + one empty slot if parent still has room
   const filledSlots = allSlots.filter(s => s.enfant);
   const emptySlots = allSlots.filter(s => !s.enfant);
-  const slotsToShow = enfants.length < MAX
+  const slotsToShow = (MAX !== null && enfants.length < MAX)
     ? [...filledSlots, ...(emptySlots.length > 0 ? [emptySlots[0]] : [])]
     : filledSlots;
 
@@ -84,8 +93,8 @@ export default function ParentDashboard() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { label: 'Enfants inscrits', value: enfants.length, max: MAX, icon: Users, color: 'text-primary' },
-          { label: 'Places restantes', value: MAX - enfants.length, max: MAX, icon: UserCheck, color: 'text-emerald-600' },
+          { label: 'Enfants inscrits', value: enfants.length, max: maxForUi, icon: Users, color: 'text-primary' },
+          { label: 'Places restantes', value: Math.max(maxForUi - enfants.length, 0), max: maxForUi, icon: UserCheck, color: 'text-emerald-600' },
           { label: 'En liste principale', value: titulaire ? 1 : 0, max: 1, icon: Star, color: 'text-accent' },
         ].map((stat, i) => (
           <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 * i }} className="bg-card rounded-xl shadow-card p-5 border border-border">
