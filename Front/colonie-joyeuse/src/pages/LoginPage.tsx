@@ -103,7 +103,7 @@ export default function LoginPage() {
       loginAsAdmin(me.email || email, normalizedRole, tokenResponse.access_token, tokenResponse.must_change_password);
     } catch (error) {
       setErrorTitle("Erreur d'authentification");
-      setErrorMessage(error instanceof Error ? error.message : "Les identifiants saisis sont incorrects.");
+      setErrorMessage("Les identifiants saisis sont incorrects.");
       setErrorOpen(true);
     }
   };
