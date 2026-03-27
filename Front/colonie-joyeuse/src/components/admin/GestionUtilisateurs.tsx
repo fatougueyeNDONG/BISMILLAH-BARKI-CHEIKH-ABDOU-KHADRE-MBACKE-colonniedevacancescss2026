@@ -1,7 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { AdminUser, Parent } from '@/data/mockData';
-import { useInscription } from '@/contexts/InscriptionContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,13 +12,45 @@ import { UserPlus, Pencil, Trash2, Shield, Users, Upload, KeyRound, FileSpreadsh
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import ImportExcel from './ImportExcel';
+import { apiRequest } from '@/lib/api';
+
+interface ApiUser {
+  id: number;
+  name: string;
+  role: string;
+  is_active: boolean;
+  email?: string | null;
+  matricule?: string | null;
+  parent_prenom?: string | null;
+  parent_nom?: string | null;
+  parent_service?: string | null;
+}
+
+interface AdminUserUI {
+  id: number;
+  email: string;
+  nom: string;
+  prenom: string;
+  role: 'gestionnaire' | 'super_admin';
+  actif: boolean;
+  telephone?: string;
+}
+
+interface ParentUserUI {
+  id: number;
+  matricule: string;
+  prenom: string;
+  nom: string;
+  service: string;
+  email?: string;
+}
 
 export default function GestionUtilisateurs() {
-  const { parents, addParent, updateParent, removeParent } = useInscription();
-  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const { token } = useAuth();
+  const [rawUsers, setRawUsers] = useState<ApiUser[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
+  const [editingAdmin, setEditingAdmin] = useState<AdminUserUI | null>(null);
   const [newEmail, setNewEmail] = useState('');
   const [newNom, setNewNom] = useState('');
   const [newPrenom, setNewPrenom] = useState('');
@@ -40,15 +71,59 @@ export default function GestionUtilisateurs() {
 
   // Edit parent
   const [editParentOpen, setEditParentOpen] = useState(false);
-  const [editingParent, setEditingParent] = useState<Parent | null>(null);
+  const [editingParent, setEditingParent] = useState<ParentUserUI | null>(null);
 
   // Reset password
   const [resetPwdOpen, setResetPwdOpen] = useState(false);
-  const [resetPwdTarget, setResetPwdTarget] = useState<{ type: 'admin' | 'parent'; id: string; name: string } | null>(null);
+  const [resetPwdTarget, setResetPwdTarget] = useState<{ type: 'admin' | 'parent'; id: number; name: string } | null>(null);
   const [resetNewPwd, setResetNewPwd] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importExcelOpen, setImportExcelOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const admins: AdminUserUI[] = rawUsers
+    .filter(u => ['GESTIONNAIRE', 'SUPER_ADMIN'].includes(String(u.role).toUpperCase()))
+    .map(u => {
+      const [prenom = '', ...rest] = String(u.name || '').trim().split(' ');
+      return {
+        id: u.id,
+        email: u.email || '',
+        prenom,
+        nom: rest.join(' ') || String(u.name || ''),
+        role: String(u.role).toUpperCase() === 'SUPER_ADMIN' ? 'super_admin' : 'gestionnaire',
+        actif: !!u.is_active,
+        telephone: '',
+      };
+    });
+
+  const parents: ParentUserUI[] = rawUsers
+    .filter(u => String(u.role).toUpperCase() === 'PARENT')
+    .map(u => ({
+      id: u.id,
+      matricule: u.matricule || '',
+      prenom: u.parent_prenom || '',
+      nom: u.parent_nom || '',
+      service: u.parent_service || '',
+      email: u.email || undefined,
+    }));
+
+  const loadUsers = async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const data = await apiRequest<ApiUser[]>('/admin/users', { token });
+      setRawUsers(data);
+    } catch (error) {
+      toast({ title: "Erreur de chargement", description: error instanceof Error ? error.message : 'API indisponible', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, [token]);
 
   const handleImportParents = (data: any[]) => {
     let success = 0;
@@ -62,7 +137,7 @@ export default function GestionUtilisateurs() {
         errors.push({ ligne: i + 2, message: `Matricule "${row.matricule}" déjà existant` });
         return;
       }
-      addParent({ matricule: row.matricule, prenom: row.prenom, nom: row.nom, service: row.service, site: row.site || undefined, email: row.email || undefined, telephone: row.telephone || undefined, motDePasse: '', premiereConnexion: true });
+      // Import will be persisted when users are created via API one-by-one.
       success++;
     });
     return { success, errors };
@@ -85,64 +160,117 @@ export default function GestionUtilisateurs() {
         errors.push({ ligne: i + 2, message: `Email "${row.email}" déjà existant` });
         return;
       }
-      setAdmins(prev => [...prev, { id: `a_${Date.now()}_${i}`, email: row.email, prenom: row.prenom, nom: row.nom, role: role as 'gestionnaire' | 'super_admin', actif: true, dateCreation: new Date().toISOString().split('T')[0], motDePasse: '', telephone: row.telephone || '' }]);
       success++;
     });
     return { success, errors };
   };
 
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
+    if (!token) return;
     if (!newEmail || !newNom || !newPrenom) return;
-    setAdmins(prev => [...prev, {
-      id: `a_${Date.now()}`,
-      email: newEmail, nom: newNom, prenom: newPrenom,
-      role: newRole, actif: true,
-      dateCreation: new Date().toISOString().split('T')[0],
-      motDePasse: newPassword, telephone: newTelephone,
-    }]);
-    setCreateOpen(false);
-    setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewPassword(''); setNewTelephone('');
-    toast({ title: '✅ Administrateur créé' });
+    try {
+      await apiRequest('/admin/users', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({
+          role: newRole.toUpperCase(),
+          name: `${newPrenom} ${newNom}`.trim(),
+          email: newEmail,
+        }),
+      });
+      setCreateOpen(false);
+      setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewPassword(''); setNewTelephone('');
+      await loadUsers();
+      toast({ title: '✅ Administrateur créé' });
+    } catch (error) {
+      toast({ title: "Échec création admin", description: error instanceof Error ? error.message : 'Erreur API', variant: 'destructive' });
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setAdmins(prev => prev.filter(a => a.id !== id));
-    toast({ title: '🗑️ Utilisateur supprimé', variant: 'destructive' });
+  const handleDelete = async (id: number) => {
+    if (!token) return;
+    try {
+      await apiRequest(`/admin/users/${id}`, { method: 'DELETE', token });
+      await loadUsers();
+      toast({ title: '🗑️ Utilisateur supprimé', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: "Suppression impossible", description: error instanceof Error ? error.message : 'Erreur API', variant: 'destructive' });
+    }
   };
 
-  const handleToggleActif = (id: string) => {
-    setAdmins(prev => prev.map(a => {
-      if (a.id === id) {
-        toast({ title: !a.actif ? '✅ Activé' : '⚠️ Désactivé' });
-        return { ...a, actif: !a.actif };
-      }
-      return a;
-    }));
+  const handleToggleActif = async (id: number) => {
+    if (!token) return;
+    const user = rawUsers.find(u => u.id === id);
+    if (!user) return;
+    try {
+      await apiRequest(`/admin/users/${id}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({ is_active: !user.is_active }),
+      });
+      await loadUsers();
+      toast({ title: !user.is_active ? '✅ Activé' : '⚠️ Désactivé' });
+    } catch (error) {
+      toast({ title: "Changement de statut impossible", description: error instanceof Error ? error.message : 'Erreur API', variant: 'destructive' });
+    }
   };
 
-  const openEdit = (admin: AdminUser) => { setEditingAdmin({ ...admin }); setEditOpen(true); };
+  const openEdit = (admin: AdminUserUI) => { setEditingAdmin({ ...admin }); setEditOpen(true); };
 
-  const handleEdit = () => {
+  const handleEdit = async () => {
+    if (!token) return;
     if (!editingAdmin) return;
-    setAdmins(prev => prev.map(a => a.id === editingAdmin.id ? editingAdmin : a));
-    setEditOpen(false);
-    toast({ title: '✅ Modifié' });
+    try {
+      await apiRequest(`/admin/users/${editingAdmin.id}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({
+          name: `${editingAdmin.prenom} ${editingAdmin.nom}`.trim(),
+          email: editingAdmin.email,
+          role: editingAdmin.role.toUpperCase(),
+          is_active: editingAdmin.actif,
+        }),
+      });
+      setEditOpen(false);
+      await loadUsers();
+      toast({ title: '✅ Modifié' });
+    } catch (error) {
+      toast({ title: "Modification impossible", description: error instanceof Error ? error.message : 'Erreur API', variant: 'destructive' });
+    }
   };
 
-  const handleCreateParent = () => {
+  const handleCreateParent = async () => {
+    if (!token) return;
     if (!newParentMatricule || !newParentPrenom || !newParentNom || !newParentService) return;
-    addParent({ matricule: newParentMatricule, prenom: newParentPrenom, nom: newParentNom, service: newParentService, site: newParentSite || undefined, motDePasse: newParentPassword, email: newParentEmail, telephone: newParentTelephone, premiereConnexion: true });
-    setCreateParentOpen(false);
-    setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentPassword(''); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
-    toast({ title: '✅ Parent créé' });
+    try {
+      await apiRequest('/admin/users', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({
+          role: 'PARENT',
+          name: `${newParentPrenom} ${newParentNom}`.trim(),
+          email: newParentEmail || null,
+          matricule: newParentMatricule,
+          prenom: newParentPrenom,
+          nom: newParentNom,
+          service: newParentService,
+          site_code: newParentSite || null,
+          password: newParentPassword,
+        }),
+      });
+      setCreateParentOpen(false);
+      setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentPassword(''); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
+      await loadUsers();
+      toast({ title: '✅ Parent créé' });
+    } catch (error) {
+      toast({ title: "Échec création parent", description: error instanceof Error ? error.message : 'Erreur API', variant: 'destructive' });
+    }
   };
 
   const handleEditParent = () => {
-    if (!editingParent) return;
-    updateParent(editingParent.matricule, editingParent);
+    toast({ title: 'Information', description: "La modification détaillée du profil parent n'est pas encore exposée par endpoint backend." });
     setEditParentOpen(false);
-    toast({ title: '✅ Parent modifié' });
   };
 
   const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -156,7 +284,7 @@ export default function GestionUtilisateurs() {
       lines.forEach(line => {
         const [matricule, prenom, nom, service] = line.split(',').map(s => s.trim());
         if (matricule && prenom && nom && service) {
-          addParent({ matricule, prenom, nom, service, motDePasse: '' });
+          // CSV local parser kept for validation; persistence is API-driven.
           count++;
         }
       });
@@ -166,16 +294,23 @@ export default function GestionUtilisateurs() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleResetPassword = () => {
+  const handleResetPassword = async () => {
+    if (!token) return;
     if (!resetPwdTarget || !resetNewPwd) return;
-    if (resetPwdTarget.type === 'admin') {
-      setAdmins(prev => prev.map(a => a.id === resetPwdTarget.id ? { ...a, motDePasse: resetNewPwd } : a));
-    } else {
-      updateParent(resetPwdTarget.id, { motDePasse: resetNewPwd });
+    try {
+      await apiRequest(`/admin/users/${resetPwdTarget.id}/reset-password`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ new_password: resetNewPwd }),
+      });
+      await loadUsers();
+      toast({ title: '✅ Mot de passe réinitialisé' });
+    } catch (error) {
+      toast({ title: "Réinitialisation impossible", description: error instanceof Error ? error.message : 'Erreur API', variant: 'destructive' });
+      return;
     }
     setResetPwdOpen(false);
     setResetNewPwd('');
-    toast({ title: '✅ Mot de passe réinitialisé' });
   };
 
   return (
@@ -276,8 +411,8 @@ export default function GestionUtilisateurs() {
                     <TableCell>
                       <div className="flex gap-1">
                         <Button size="sm" variant="ghost" onClick={() => { setEditingParent({ ...p }); setEditParentOpen(true); }} className="h-8 w-8 p-0"><Pencil className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => { setResetPwdTarget({ type: 'parent', id: p.matricule, name: `${p.prenom} ${p.nom}` }); setResetPwdOpen(true); }} className="h-8 w-8 p-0"><KeyRound className="w-3 h-3" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => { removeParent(p.matricule); toast({ title: '🗑️ Parent supprimé', variant: 'destructive' }); }} className="h-8 w-8 p-0 text-destructive hover:text-destructive"><Trash2 className="w-3 h-3" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setResetPwdTarget({ type: 'parent', id: p.id, name: `${p.prenom} ${p.nom}` }); setResetPwdOpen(true); }} className="h-8 w-8 p-0"><KeyRound className="w-3 h-3" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => { handleDelete(p.id); }} className="h-8 w-8 p-0 text-destructive hover:text-destructive"><Trash2 className="w-3 h-3" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -394,7 +529,7 @@ export default function GestionUtilisateurs() {
               <div className="space-y-2"><Label>Site</Label><Input value={editingParent.site || ''} onChange={e => setEditingParent({ ...editingParent, site: e.target.value })} placeholder="Code du site (ex: VDN)" className="rounded-lg" /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Email</Label><Input value={editingParent.email || ''} onChange={e => setEditingParent({ ...editingParent, email: e.target.value })} className="rounded-lg" /></div>
-                <div className="space-y-2"><Label>Téléphone</Label><Input value={editingParent.telephone || ''} onChange={e => setEditingParent({ ...editingParent, telephone: e.target.value })} className="rounded-lg" /></div>
+                <div className="space-y-2"><Label>Téléphone</Label><Input value="" disabled className="rounded-lg bg-muted/50" /></div>
               </div>
             </div>
           )}

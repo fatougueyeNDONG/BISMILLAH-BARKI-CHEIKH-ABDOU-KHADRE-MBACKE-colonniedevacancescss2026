@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Pencil, Trash2, List, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import ImportExcel from './ImportExcel';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 
 const CODE_OPTIONS = [
   { value: 'PRINCIPALE', label: 'PRINCIPALE' },
@@ -24,14 +26,31 @@ interface ListeConfig {
   description: string;
 }
 
-const INITIAL_LISTES: ListeConfig[] = [];
-
 export default function GestionListesConfig() {
-  const [listes, setListes] = useState<ListeConfig[]>([...INITIAL_LISTES]);
+  const { token } = useAuth();
+  const [listes, setListes] = useState<ListeConfig[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingListe, setEditingListe] = useState<ListeConfig | null>(null);
   const [form, setForm] = useState({ code: '', nom: '', description: '' });
   const [importOpen, setImportOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const loadListes = async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const data = await apiRequest<ListeConfig[]>('/admin/listes-config', { token });
+      setListes(data.map(l => ({ ...l, id: String(l.id), code: String(l.code).toUpperCase() })));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Chargement des listes impossible');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadListes();
+  }, [token]);
 
   const handleImportListes = (data: any[]) => {
     let success = 0;
@@ -42,7 +61,7 @@ export default function GestionListesConfig() {
       const code = row.code.toUpperCase().trim();
       if (!validCodes.includes(code)) { errors.push({ ligne: i + 2, message: `Code invalide "${row.code}" (${validCodes.join(', ')})` }); return; }
       if (listes.some(l => l.code === code)) { errors.push({ ligne: i + 2, message: `Code "${code}" déjà existant` }); return; }
-      setListes(prev => [...prev, { id: `l_${Date.now()}_${i}`, code, nom: row.nom, description: row.description || '' }]);
+      setListes(prev => [...prev, { id: `tmp_${Date.now()}_${i}`, code, nom: row.nom, description: row.description || '' }]);
       success++;
     });
     return { success, errors };
@@ -63,7 +82,8 @@ export default function GestionListesConfig() {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!token) return;
     if (!form.code || !form.nom.trim()) {
       toast.error('Le code et le nom sont obligatoires');
       return;
@@ -73,19 +93,38 @@ export default function GestionListesConfig() {
       toast.error('Ce code de liste existe déjà, veuillez en choisir un autre');
       return;
     }
-    if (editingListe) {
-      setListes(prev => prev.map(l => l.id === editingListe.id ? { ...l, ...form } : l));
-      toast.success('Liste modifiée avec succès');
-    } else {
-      setListes(prev => [...prev, { id: `l_${Date.now()}`, ...form }]);
-      toast.success('Liste ajoutée avec succès');
+    try {
+      if (editingListe) {
+        await apiRequest(`/admin/listes-config/${editingListe.id}`, {
+          method: 'PATCH',
+          token,
+          body: JSON.stringify(form),
+        });
+        toast.success('Liste modifiée avec succès');
+      } else {
+        await apiRequest('/admin/listes-config', {
+          method: 'POST',
+          token,
+          body: JSON.stringify(form),
+        });
+        toast.success('Liste ajoutée avec succès');
+      }
+      await loadListes();
+      setDialogOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Échec de sauvegarde');
     }
-    setDialogOpen(false);
   };
 
-  const handleDelete = (id: string) => {
-    setListes(prev => prev.filter(l => l.id !== id));
-    toast.success('Liste supprimée');
+  const handleDelete = async (id: string) => {
+    if (!token) return;
+    try {
+      await apiRequest(`/admin/listes-config/${id}`, { method: 'DELETE', token });
+      toast.success('Liste supprimée');
+      await loadListes();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Suppression impossible');
+    }
   };
 
   // For edit, include current code in available options
@@ -136,8 +175,11 @@ export default function GestionListesConfig() {
                   </TableCell>
                 </TableRow>
               ))}
-              {listes.length === 0 && (
+              {!loading && listes.length === 0 && (
                 <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Aucune liste configurée</TableCell></TableRow>
+              )}
+              {loading && (
+                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Chargement...</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

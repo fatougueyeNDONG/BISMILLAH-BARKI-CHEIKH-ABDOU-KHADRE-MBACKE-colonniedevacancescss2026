@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Pencil, Trash2, MapPin, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import ImportExcel from './ImportExcel';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 
 interface SiteConfig {
   id: string;
@@ -17,15 +19,32 @@ interface SiteConfig {
   description: string;
 }
 
-const INITIAL_SITES: SiteConfig[] = [];
-
 export default function GestionSites() {
-  const [sites, setSites] = useState<SiteConfig[]>([...INITIAL_SITES]);
+  const { token } = useAuth();
+  const [sites, setSites] = useState<SiteConfig[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<SiteConfig | null>(null);
   const [form, setForm] = useState({ nom: '', code: '', description: '' });
   const [codeError, setCodeError] = useState('');
   const [importOpen, setImportOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const loadSites = async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const data = await apiRequest<SiteConfig[]>('/admin/sites', { token });
+      setSites(data.map(s => ({ ...s, id: String(s.id) })));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Chargement des sites impossible');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSites();
+  }, [token]);
 
   const handleImportSites = (data: any[]) => {
     let success = 0;
@@ -36,7 +55,7 @@ export default function GestionSites() {
       const code = row.code.toUpperCase().replace(/\s/g, '');
       if (existingCodes.has(code)) { errors.push({ ligne: i + 2, message: `Code "${code}" déjà existant` }); return; }
       existingCodes.add(code);
-      setSites(prev => [...prev, { id: `s_${Date.now()}_${i}`, nom: row.nom, code, description: row.description || '' }]);
+      setSites(prev => [...prev, { id: `tmp_${Date.now()}_${i}`, nom: row.nom, code, description: row.description || '' }]);
       success++;
     });
     return { success, errors };
@@ -63,7 +82,8 @@ export default function GestionSites() {
     setCodeError(isDuplicate ? 'Ce code existe déjà, veuillez en choisir un autre' : '');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!token) return;
     if (!form.nom.trim() || !form.code.trim()) {
       toast.error('Le nom et le code sont obligatoires');
       return;
@@ -77,19 +97,38 @@ export default function GestionSites() {
       toast.error('Ce code existe déjà, veuillez en choisir un autre');
       return;
     }
-    if (editingSite) {
-      setSites(prev => prev.map(s => s.id === editingSite.id ? { ...s, ...form } : s));
-      toast.success('Agence modifiée avec succès');
-    } else {
-      setSites(prev => [...prev, { id: `s_${Date.now()}`, ...form }]);
-      toast.success('Agence ajoutée avec succès');
+    try {
+      if (editingSite) {
+        await apiRequest(`/admin/sites/${editingSite.id}`, {
+          method: 'PATCH',
+          token,
+          body: JSON.stringify(form),
+        });
+        toast.success('Agence modifiée avec succès');
+      } else {
+        await apiRequest('/admin/sites', {
+          method: 'POST',
+          token,
+          body: JSON.stringify(form),
+        });
+        toast.success('Agence ajoutée avec succès');
+      }
+      await loadSites();
+      setDialogOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Échec de sauvegarde');
     }
-    setDialogOpen(false);
   };
 
-  const handleDelete = (id: string) => {
-    setSites(prev => prev.filter(s => s.id !== id));
-    toast.success('Agence supprimée');
+  const handleDelete = async (id: string) => {
+    if (!token) return;
+    try {
+      await apiRequest(`/admin/sites/${id}`, { method: 'DELETE', token });
+      toast.success('Agence supprimée');
+      await loadSites();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Suppression impossible');
+    }
   };
 
   return (
@@ -133,8 +172,11 @@ export default function GestionSites() {
                   </TableCell>
                 </TableRow>
               ))}
-              {sites.length === 0 && (
+              {!loading && sites.length === 0 && (
                 <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Aucune agence configurée</TableCell></TableRow>
+              )}
+              {loading && (
+                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Chargement...</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

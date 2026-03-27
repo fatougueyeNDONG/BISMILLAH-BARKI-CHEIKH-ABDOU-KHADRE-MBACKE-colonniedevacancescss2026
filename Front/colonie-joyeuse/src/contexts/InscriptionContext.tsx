@@ -9,16 +9,16 @@ interface InscriptionContextType {
   settings: AppSettings;
   historique: HistoriqueEntry[];
   updateSettings: (s: Partial<AppSettings>) => void;
-  addEnfant: (enfant: Enfant) => void;
+  addEnfant: (enfant: Enfant) => void | Promise<void>;
   updateEnfant: (id: string, updates: Partial<Enfant>) => void;
   removeEnfant: (id: string) => void;
   getEnfantsByParent: (matricule: string) => Enfant[];
   getEnfantsByListe: (liste: Enfant['liste']) => Enfant[];
-  setTitulaire: (matricule: string, enfantId: string) => void;
-  demanderDesistement: (enfantId: string) => void;
-  annulerDesistement: (enfantId: string) => void;
+  setTitulaire: (matricule: string, enfantId: string) => void | Promise<void>;
+  demanderDesistement: (enfantId: string) => void | Promise<void>;
+  annulerDesistement: (enfantId: string) => void | Promise<void>;
   validerDesistement: (enfantId: string) => void;
-  reinscrireEnfant: (enfantId: string) => void;
+  reinscrireEnfant: (enfantId: string) => void | Promise<void>;
   transfererEnfant: (enfantId: string, nouvelleListe: Enfant['liste']) => void;
   getListeFinale: () => Enfant[];
   getRangDansListe: (enfantId: string) => number;
@@ -55,6 +55,126 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>({ ...EMPTY_SETTINGS });
   const [historique, setHistorique] = useState<HistoriqueEntry[]>([]);
 
+  const mapListe = (value: string): Enfant['liste'] => {
+    const v = String(value || '').toUpperCase();
+    if (v === 'PRINCIPALE') return 'principale';
+    if (v === 'ATTENTE_N1') return 'attente_n1';
+    return 'attente_n2';
+  };
+
+  const mapStatut = (liste: Enfant['liste']): Enfant['statut'] => {
+    if (liste === 'principale') return 'Titulaire';
+    if (liste === 'attente_n1') return 'Suppléant N1';
+    return 'Suppléant N2';
+  };
+
+  const mapLien = (value: string): Enfant['lienParente'] => {
+    const v = String(value || '').toUpperCase();
+    if (v === 'PERE') return 'Père';
+    if (v === 'MERE') return 'Mère';
+    if (v === 'TUTEUR_LEGAL') return 'Tuteur légal';
+    return 'Autre';
+  };
+
+  const toApiLienParente = (value: Enfant['lienParente']) => {
+    if (value === 'Père') return 'PERE';
+    if (value === 'Mère') return 'MERE';
+    if (value === 'Tuteur légal') return 'TUTEUR_LEGAL';
+    return 'AUTRE';
+  };
+
+  const reloadParentDemandes = async () => {
+    if (!token || role !== 'parent' || !authParent?.matricule) return;
+    const demandes = await apiRequest<Array<{
+      id: number;
+      liste_code: string;
+      date_inscription: string;
+      statut: string;
+      non_validation_reason?: string | null;
+      enfant_id: number;
+      enfant_prenom: string;
+      enfant_nom: string;
+      enfant_date_naissance: string;
+      enfant_sexe: string;
+      enfant_lien_parente: string;
+      enfant_is_titulaire: boolean;
+    }>>('/parents/demandes', { token });
+
+    const mapped: Enfant[] = demandes.map(d => {
+      const liste = mapListe(d.liste_code);
+      return {
+        // We use demande_id as primary UI id to call parent action endpoints directly.
+        id: String(d.id),
+        parentMatricule: authParent.matricule,
+        prenom: d.enfant_prenom,
+        nom: d.enfant_nom,
+        dateNaissance: d.enfant_date_naissance,
+        sexe: String(d.enfant_sexe || '').toUpperCase() === 'F' ? 'F' : 'M',
+        lienParente: mapLien(d.enfant_lien_parente),
+        liste,
+        statut: mapStatut(liste),
+        dateInscription: d.date_inscription,
+        validation: d.statut === 'NON_VALIDEE' ? 'refusé' : d.statut === 'RETENUE' ? 'validé' : 'en_attente',
+        motifRefus: d.non_validation_reason || undefined,
+      };
+    });
+    setEnfants(mapped);
+    setParents([{
+      matricule: authParent.matricule,
+      prenom: authParent.prenom,
+      nom: authParent.nom,
+      service: authParent.service,
+      motDePasse: '',
+    }]);
+  };
+
+  const reloadAdminDemandes = async () => {
+    if (!token || (role !== 'gestionnaire' && role !== 'super_admin')) return;
+    const [l1, l2, l3, users] = await Promise.all([
+      apiRequest<any[]>('/admin/listes/PRINCIPALE/demandes', { token }),
+      apiRequest<any[]>('/admin/listes/ATTENTE_N1/demandes', { token }),
+      apiRequest<any[]>('/admin/listes/ATTENTE_N2/demandes', { token }),
+      apiRequest<any[]>('/admin/users', { token }),
+    ]);
+
+    const parentByMatricule = new Map<string, Parent>();
+    users
+      .filter((u) => String(u.role).toUpperCase() === 'PARENT')
+      .forEach((u) => {
+        const mat = u.matricule || '';
+        parentByMatricule.set(mat, {
+          matricule: mat,
+          prenom: u.parent_prenom || '',
+          nom: u.parent_nom || '',
+          service: u.parent_service || '',
+          motDePasse: '',
+          email: u.email || undefined,
+        });
+      });
+
+    const merged = [...l1, ...l2, ...l3];
+    const mapped: Enfant[] = merged.map((d) => {
+      const liste = mapListe(d.liste);
+      return {
+        id: String(d.demande_id),
+        parentMatricule: d.parent_matricule,
+        prenom: d.enfant?.prenom || '',
+        nom: d.enfant?.nom || '',
+        dateNaissance: d.enfant?.date_naissance || '',
+        sexe: String(d.enfant?.sexe || '').toUpperCase() === 'F' ? 'F' : 'M',
+        lienParente: mapLien(d.enfant?.lien_parente || ''),
+        liste,
+        statut: mapStatut(liste),
+        dateInscription: d.date_inscription,
+        validation: d.statut === 'NON_VALIDEE' ? 'refusé' : d.statut === 'RETENUE' ? 'validé' : 'en_attente',
+        motifRefus: d.non_validation_reason || undefined,
+      };
+    });
+
+    setEnfants(mapped);
+    setParents(Array.from(parentByMatricule.values()));
+  };
+
   useEffect(() => {
     const loadRuntimeSettings = async () => {
       if (!token) return;
@@ -73,83 +193,15 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   useEffect(() => {
-    const loadParentDemandes = async () => {
-      if (!token || role !== 'parent' || !authParent?.matricule) return;
+    const loadData = async () => {
       try {
-        const demandes = await apiRequest<Array<{
-          id: number;
-          liste_code: string;
-          date_inscription: string;
-          statut: string;
-          non_validation_reason?: string | null;
-          enfant_id: number;
-          enfant_prenom: string;
-          enfant_nom: string;
-          enfant_date_naissance: string;
-          enfant_sexe: string;
-          enfant_lien_parente: string;
-          enfant_is_titulaire: boolean;
-        }>>('/parents/demandes', { token });
-
-        const mapListe = (value: string): Enfant['liste'] => {
-          const v = String(value || '').toUpperCase();
-          if (v === 'PRINCIPALE') return 'principale';
-          if (v === 'ATTENTE_N1') return 'attente_n1';
-          return 'attente_n2';
-        };
-
-        const mapStatut = (liste: Enfant['liste']): Enfant['statut'] => {
-          if (liste === 'principale') return 'Titulaire';
-          if (liste === 'attente_n1') return 'Suppléant N1';
-          return 'Suppléant N2';
-        };
-
-        const mapLien = (value: string): Enfant['lienParente'] => {
-          const v = String(value || '').toUpperCase();
-          if (v === 'PERE') return 'Père';
-          if (v === 'MERE') return 'Mère';
-          if (v === 'TUTEUR_LEGAL') return 'Tuteur légal';
-          return 'Autre';
-        };
-
-        const mapped: Enfant[] = demandes.map(d => {
-          const liste = mapListe(d.liste_code);
-          return {
-            id: String(d.enfant_id || d.id),
-            parentMatricule: authParent.matricule,
-            prenom: d.enfant_prenom,
-            nom: d.enfant_nom,
-            dateNaissance: d.enfant_date_naissance,
-            sexe: String(d.enfant_sexe || '').toUpperCase() === 'F' ? 'F' : 'M',
-            lienParente: mapLien(d.enfant_lien_parente),
-            liste,
-            statut: mapStatut(liste),
-            dateInscription: d.date_inscription,
-            validation: d.statut === 'NON_VALIDEE' ? 'refusé' : d.statut === 'RETENUE' ? 'validé' : 'en_attente',
-            motifRefus: d.non_validation_reason || undefined,
-          };
-        });
-
-        setEnfants(mapped);
-        setParents(prev => {
-          const exists = prev.some(p => p.matricule === authParent.matricule);
-          if (exists) return prev;
-          return [
-            ...prev,
-            {
-              matricule: authParent.matricule,
-              prenom: authParent.prenom,
-              nom: authParent.nom,
-              service: authParent.service,
-              motDePasse: '',
-            },
-          ];
-        });
+        if (role === 'parent') await reloadParentDemandes();
+        if (role === 'gestionnaire' || role === 'super_admin') await reloadAdminDemandes();
       } catch {
-        // Keep existing state when parent demandes API fails.
+        // Keep current UI state if an API call fails.
       }
     };
-    loadParentDemandes();
+    loadData();
   }, [token, role, authParent?.matricule]);
 
   const updateSettings = (s: Partial<AppSettings>) => {
@@ -166,7 +218,30 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
     }, ...prev]);
   };
 
-  const addEnfant = (enfant: Enfant) => {
+  const addEnfant = async (enfant: Enfant) => {
+    if (token && role === 'parent' && authParent) {
+      await apiRequest('/parents/inscriptions', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({
+          parent: {
+            matricule: authParent.matricule,
+            prenom: authParent.prenom,
+            nom: authParent.nom,
+            service: authParent.service,
+          },
+          enfant: {
+            prenom: enfant.prenom,
+            nom: enfant.nom,
+            date_naissance: enfant.dateNaissance,
+            sexe: enfant.sexe,
+            lien_parente: toApiLienParente(enfant.lienParente),
+          },
+        }),
+      });
+      await reloadParentDemandes();
+      return;
+    }
     setEnfants(prev => [...prev, enfant]);
   };
 
@@ -188,7 +263,16 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
       .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime());
   };
 
-  const setTitulaire = (matricule: string, enfantId: string) => {
+  const setTitulaire = async (matricule: string, enfantId: string) => {
+    if (token && role === 'parent') {
+      await apiRequest('/parents/titulaire', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ enfant_id_titulaire: Number(enfantId) }),
+      });
+      await reloadParentDemandes();
+      return;
+    }
     setEnfants(prev => {
       const parentEnfants = prev.filter(e => e.parentMatricule === matricule);
       const others = prev.filter(e => e.parentMatricule !== matricule);
@@ -208,11 +292,25 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const demanderDesistement = (enfantId: string) => {
+  const demanderDesistement = async (enfantId: string) => {
+    if (token && role === 'parent') {
+      await apiRequest(`/parents/desistement/${Number(enfantId)}`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ reason: null }),
+      });
+      await reloadParentDemandes();
+      return;
+    }
     setEnfants(prev => prev.map(e => e.id === enfantId ? { ...e, desistement: 'demandé' as const, dateDesistement: new Date().toISOString().split('T')[0] } : e));
   };
 
-  const annulerDesistement = (enfantId: string) => {
+  const annulerDesistement = async (enfantId: string) => {
+    if (token && role === 'parent') {
+      await apiRequest(`/parents/desistement/${Number(enfantId)}/annuler`, { method: 'POST', token });
+      await reloadParentDemandes();
+      return;
+    }
     setEnfants(prev => prev.map(e => e.id === enfantId ? { ...e, desistement: null, dateDesistement: undefined } : e));
   };
 
@@ -220,7 +318,12 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
     setEnfants(prev => prev.map(e => e.id === enfantId ? { ...e, desistement: 'validé' as const } : e));
   };
 
-  const reinscrireEnfant = (enfantId: string) => {
+  const reinscrireEnfant = async (enfantId: string) => {
+    if (token && role === 'parent') {
+      await apiRequest(`/parents/desistement/${Number(enfantId)}/reinscrire`, { method: 'POST', token });
+      await reloadParentDemandes();
+      return;
+    }
     setEnfants(prev => {
       const enfant = prev.find(e => e.id === enfantId);
       if (!enfant) return prev;
