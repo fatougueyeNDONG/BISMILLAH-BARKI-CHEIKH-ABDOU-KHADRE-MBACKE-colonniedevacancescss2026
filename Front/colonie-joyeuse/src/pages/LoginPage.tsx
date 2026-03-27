@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { getParentByMatricule, MOCK_ADMIN_USERS } from '@/data/mockData';
+import { apiRequest } from '@/lib/api';
 import logo from '@/assets/logo.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,7 @@ type LoginMode = 'select' | 'parent' | 'admin';
 
 export default function LoginPage() {
   const { loginAsParent, loginAsAdmin, setAuthStep } = useAuth();
-  const { settings, parents } = useInscription();
+  const { settings } = useInscription();
   const [mode, setMode] = useState<LoginMode>('select');
   const [matricule, setMatricule] = useState('');
   const [parentPassword, setParentPassword] = useState('');
@@ -27,10 +27,12 @@ export default function LoginPage() {
   const [errorTitle, setErrorTitle] = useState('');
 
   const today = new Date().toISOString().split('T')[0];
-  const inscriptionsClosed = !settings.inscriptionsOuvertes || today > settings.dateFinInscriptions;
-  const inscriptionsNotStarted = today < settings.dateDebutInscriptions;
+  const hasDebut = Boolean(settings.dateDebutInscriptions);
+  const hasFin = Boolean(settings.dateFinInscriptions);
+  const inscriptionsClosed = !settings.inscriptionsOuvertes || (hasFin && today > settings.dateFinInscriptions);
+  const inscriptionsNotStarted = hasDebut && today < settings.dateDebutInscriptions;
 
-  const handleParentLogin = () => {
+  const handleParentLogin = async () => {
     if (!settings.accesParentsActif) {
       setErrorTitle("Accès désactivé");
       setErrorMessage("L'accès à la plateforme parents est actuellement désactivé par l'administration. Veuillez réessayer ultérieurement.");
@@ -51,43 +53,59 @@ export default function LoginPage() {
       setErrorOpen(true);
       return;
     }
-    const parent = parents.find(p => p.matricule.toLowerCase() === trimmed.toLowerCase());
-    if (!parent) {
-      setErrorTitle("Accès restreint");
-      setErrorMessage("Le matricule saisi ne correspond à aucun agent actif. Vérifiez votre carte professionnelle ou contactez la DRH.");
+    try {
+      const tokenResponse = await apiRequest<{ access_token: string; must_change_password: boolean }>('/auth/login-parent', {
+        method: 'POST',
+        body: JSON.stringify({ matricule: trimmed, password: parentPassword }),
+      });
+
+      const me = await apiRequest<{
+        role: 'parent';
+        parent?: { prenom: string; nom: string; matricule: string; service: string | null };
+      }>('/auth/me', { token: tokenResponse.access_token });
+
+      const parentProfile = me.parent
+        ? {
+            prenom: me.parent.prenom || '',
+            nom: me.parent.nom || '',
+            matricule: me.parent.matricule || trimmed,
+            service: me.parent.service || '',
+          }
+        : { prenom: '', nom: '', matricule: trimmed, service: '' };
+
+      loginAsParent(parentProfile, tokenResponse.access_token, tokenResponse.must_change_password);
+    } catch (error) {
+      setErrorTitle("Erreur d'authentification");
+      setErrorMessage(error instanceof Error ? error.message : "Les identifiants saisis sont incorrects.");
       setErrorOpen(true);
-      return;
     }
-    if (parent.motDePasse !== parentPassword) {
-      setErrorTitle("Mot de passe incorrect");
-      setErrorMessage("Le mot de passe saisi est incorrect. Veuillez réessayer ou utiliser l'option 'Mot de passe oublié'.");
-      setErrorOpen(true);
-      return;
-    }
-    loginAsParent(parent);
   };
 
-  const handleAdminLogin = () => {
+  const handleAdminLogin = async () => {
     if (!email || !password) {
       setErrorTitle("Champs requis");
       setErrorMessage("Veuillez renseigner votre adresse e-mail et votre mot de passe.");
       setErrorOpen(true);
       return;
     }
-    const user = MOCK_ADMIN_USERS.find(u => u.email === email);
-    if (!user || user.motDePasse !== password) {
+    try {
+      const tokenResponse = await apiRequest<{ access_token: string; must_change_password: boolean }>('/auth/login-admin', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      const me = await apiRequest<{ role: string; email: string }>('/auth/me', {
+        token: tokenResponse.access_token,
+      });
+      const normalizedRole = String(me.role || '').toLowerCase();
+      if (normalizedRole !== 'gestionnaire' && normalizedRole !== 'super_admin') {
+        throw new Error("Rôle administrateur invalide retourné par l'API.");
+      }
+      loginAsAdmin(me.email || email, normalizedRole, tokenResponse.access_token, tokenResponse.must_change_password);
+    } catch (error) {
       setErrorTitle("Erreur d'authentification");
-      setErrorMessage("Les identifiants saisis sont incorrects.");
+      setErrorMessage(error instanceof Error ? error.message : "Les identifiants saisis sont incorrects.");
       setErrorOpen(true);
-      return;
     }
-    if (!user.actif) {
-      setErrorTitle("Compte désactivé");
-      setErrorMessage("Votre compte a été désactivé par un administrateur.");
-      setErrorOpen(true);
-      return;
-    }
-    loginAsAdmin(email, user.role);
   };
 
   return (
@@ -237,7 +255,7 @@ export default function LoginPage() {
 
               <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
                 <p className="text-xs text-muted-foreground">
-                  <strong className="text-primary">Test :</strong> admin@css.sn / admin123 (Gestionnaire) — superadmin@css.sn / admin123 (Super Admin)
+                  Les identifiants saisis sont verifies en temps reel via le backend.
                 </p>
               </div>
             </div>

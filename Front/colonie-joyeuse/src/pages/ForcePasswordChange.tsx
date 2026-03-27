@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
-import { useInscription } from '@/contexts/InscriptionContext';
+import { apiRequest } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,22 +10,21 @@ import { AlertTriangle, Lock, CheckCircle2 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
 export default function ForcePasswordChange() {
-  const { pendingParent, setAuthStep, setPendingParent } = useAuth();
-  const { updateParent } = useInscription();
+  const { pendingParent, setAuthStep, setPendingParent, token } = useAuth();
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successOpen, setSuccessOpen] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!newPwd || !confirmPwd) {
       setErrorMessage('Veuillez remplir tous les champs.');
       setErrorOpen(true);
       return;
     }
-    if (newPwd.length < 6) {
-      setErrorMessage('Le mot de passe doit contenir au moins 6 caractères.');
+    if (newPwd.length < 8) {
+      setErrorMessage('Le mot de passe doit contenir au moins 8 caractères.');
       setErrorOpen(true);
       return;
     }
@@ -34,8 +33,21 @@ export default function ForcePasswordChange() {
       setErrorOpen(true);
       return;
     }
-    if (pendingParent) {
-      updateParent(pendingParent.matricule, { motDePasse: newPwd, premiereConnexion: false });
+    if (!token) {
+      setErrorMessage("Session invalide. Veuillez vous reconnecter.");
+      setErrorOpen(true);
+      return;
+    }
+    try {
+      await apiRequest<{ ok: boolean }>('/auth/change-password', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ old_password: 'Passer123', new_password: newPwd }),
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Impossible de modifier le mot de passe.');
+      setErrorOpen(true);
+      return;
     }
     setSuccessOpen(true);
   };
@@ -71,7 +83,7 @@ export default function ForcePasswordChange() {
               <Label className="text-foreground font-medium">Nouveau mot de passe</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input type="password" placeholder="Minimum 6 caractères" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="pl-10 h-12 rounded-lg" />
+                <Input type="password" placeholder="Minimum 8 caracteres" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="pl-10 h-12 rounded-lg" />
               </div>
             </div>
             <div className="space-y-2">

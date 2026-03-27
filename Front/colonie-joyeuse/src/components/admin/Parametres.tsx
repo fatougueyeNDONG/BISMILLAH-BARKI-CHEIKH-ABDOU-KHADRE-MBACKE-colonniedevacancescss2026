@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,14 +8,42 @@ import { Calendar, Settings2, Shield, Mail } from 'lucide-react';
 import { useInscription } from '@/contexts/InscriptionContext';
 import { toast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 
 export default function Parametres() {
+  const { token } = useAuth();
   const { settings, updateSettings } = useInscription();
   const [capaciteNonDefini, setCapaciteNonDefini] = useState(settings.capaciteMax === null);
   const [maxEnfantsNonDefini, setMaxEnfantsNonDefini] = useState(settings.maxEnfantsParParent === null);
 
-  const handleSave = () => {
-    toast({ title: '✅ Paramètres enregistrés', description: 'Les paramètres ont été mis à jour avec succès.' });
+  useEffect(() => {
+    const loadSettings = async () => {
+      if (!token) return;
+      try {
+        const data = await apiRequest<typeof settings>('/admin/settings', { token });
+        updateSettings(data);
+        setCapaciteNonDefini(data.capaciteMax === null);
+        setMaxEnfantsNonDefini(data.maxEnfantsParParent === null);
+      } catch {
+        // Keep local state if API loading fails.
+      }
+    };
+    loadSettings();
+  }, [token]);
+
+  const handleSave = async () => {
+    if (!token) return;
+    try {
+      await apiRequest<typeof settings>('/admin/settings', {
+        method: 'PUT',
+        token,
+        body: JSON.stringify(settings),
+      });
+      toast({ title: '✅ Paramètres enregistrés', description: 'Les paramètres ont été mis à jour avec succès.' });
+    } catch (error) {
+      toast({ title: "❌ Échec de l'enregistrement", description: error instanceof Error ? error.message : 'Erreur API', variant: 'destructive' });
+    }
   };
 
   return (

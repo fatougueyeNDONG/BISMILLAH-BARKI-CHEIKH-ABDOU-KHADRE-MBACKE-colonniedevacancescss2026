@@ -24,11 +24,7 @@ interface ListeConfig {
   description: string;
 }
 
-const INITIAL_LISTES: ListeConfig[] = [
-  { id: 'l1', code: 'PRINCIPALE', nom: 'Liste principale', description: 'Liste des enfants titulaires' },
-  { id: 'l2', code: 'ATTENTE_N1', nom: "Liste d'attente N1", description: 'Première liste de suppléants (lien direct)' },
-  { id: 'l3', code: 'ATTENTE_N2', nom: "Liste d'attente N2", description: 'Deuxième liste de suppléants (autres liens)' },
-];
+const INITIAL_LISTES: ListeConfig[] = [];
 
 export default function GestionListesConfig() {
   const [listes, setListes] = useState<ListeConfig[]>([...INITIAL_LISTES]);

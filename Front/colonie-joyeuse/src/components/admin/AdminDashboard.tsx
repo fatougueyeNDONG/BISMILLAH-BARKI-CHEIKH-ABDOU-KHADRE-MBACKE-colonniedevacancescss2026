@@ -1,22 +1,50 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 import { Users, UserCheck, Clock, TrendingUp, Award, HandMetal } from 'lucide-react';
 
 export default function AdminDashboard() {
+  const { token } = useAuth();
   const { enfants, getListeFinale, parents, settings } = useInscription();
+  const [apiStats, setApiStats] = useState<{
+    total_demandes: number;
+    selected_total: number;
+    selected_by_liste: Record<string, number>;
+    desistements_waiting: number;
+  } | null>(null);
 
-  const principale = enfants.filter(e => e.liste === 'principale').length;
-  const n1 = enfants.filter(e => e.liste === 'attente_n1').length;
-  const n2 = enfants.filter(e => e.liste === 'attente_n2').length;
-  const total = enfants.length;
+  useEffect(() => {
+    const loadStats = async () => {
+      if (!token) return;
+      try {
+        const stats = await apiRequest<{
+          total_demandes: number;
+          selected_total: number;
+          selected_by_liste: Record<string, number>;
+          desistements_waiting: number;
+        }>('/admin/stats', { token });
+        setApiStats(stats);
+      } catch {
+        setApiStats(null);
+      }
+    };
+    loadStats();
+  }, [token]);
+
+  const principale = apiStats?.selected_by_liste?.principale ?? enfants.filter(e => e.liste === 'principale').length;
+  const n1 = apiStats?.selected_by_liste?.attente_n1 ?? enfants.filter(e => e.liste === 'attente_n1').length;
+  const n2 = apiStats?.selected_by_liste?.attente_n2 ?? enfants.filter(e => e.liste === 'attente_n2').length;
+  const total = apiStats?.total_demandes ?? enfants.length;
   const totalParents = new Set(enfants.map(e => e.parentMatricule)).size;
   const listeFinale = getListeFinale();
-  const desistementsEnAttente = enfants.filter(e => e.desistement === 'demandé').length;
+  const desistementsEnAttente = apiStats?.desistements_waiting ?? enfants.filter(e => e.desistement === 'demandé').length;
 
   const capaciteLabel = settings.capaciteMax !== null ? settings.capaciteMax : '∞';
-  const retenuLabel = settings.capaciteMax !== null ? `${listeFinale.length}/${settings.capaciteMax}` : `${listeFinale.length} (Non défini)`;
-  const fillPercent = settings.capaciteMax !== null && settings.capaciteMax > 0 ? Math.min((listeFinale.length / settings.capaciteMax) * 100, 100) : 0;
+  const selectedTotal = apiStats?.selected_total ?? listeFinale.length;
+  const retenuLabel = settings.capaciteMax !== null ? `${selectedTotal}/${settings.capaciteMax}` : `${selectedTotal} (Non défini)`;
+  const fillPercent = settings.capaciteMax !== null && settings.capaciteMax > 0 ? Math.min((selectedTotal / settings.capaciteMax) * 100, 100) : 0;
 
   const stats = [
     { label: 'Total inscriptions', value: total, icon: Users, color: 'text-primary', bg: 'bg-primary/10' },
@@ -88,6 +116,9 @@ export default function AdminDashboard() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-card rounded-xl shadow-card border border-border p-6">
           <h3 className="text-lg font-semibold text-foreground mb-4">Activité récente</h3>
           <div className="space-y-3">
+            {enfants.length === 0 && (
+              <p className="text-sm text-muted-foreground">Aucune activité locale. Les données réelles sont chargées via API.</p>
+            )}
             {enfants.slice(-5).reverse().map(e => (
               <div key={e.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
                 <div className={`w-2 h-2 rounded-full ${e.liste === 'principale' ? 'bg-emerald-500' : e.liste === 'attente_n1' ? 'bg-accent' : 'bg-primary'}`} />

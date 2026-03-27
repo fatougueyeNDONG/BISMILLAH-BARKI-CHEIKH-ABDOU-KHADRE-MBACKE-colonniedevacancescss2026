@@ -1,33 +1,24 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
-import { useInscription } from '@/contexts/InscriptionContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { AlertTriangle, Lock, CheckCircle2, KeyRound } from 'lucide-react';
+import { AlertTriangle, Lock, KeyRound } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
 export default function ForgotPassword() {
   const { setAuthStep } = useAuth();
-  const { parents, updateParent } = useInscription();
   const [matricule, setMatricule] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [successOpen, setSuccessOpen] = useState(false);
 
   const handleSubmit = () => {
     if (!matricule || !newPwd || !confirmPwd) {
       setErrorMessage('Veuillez remplir tous les champs.');
-      setErrorOpen(true);
-      return;
-    }
-    const parent = parents.find(p => p.matricule.toLowerCase() === matricule.trim().toLowerCase());
-    if (!parent) {
-      setErrorMessage('Matricule introuvable. Veuillez vérifier votre matricule.');
       setErrorOpen(true);
       return;
     }
@@ -41,8 +32,8 @@ export default function ForgotPassword() {
       setErrorOpen(true);
       return;
     }
-    updateParent(parent.matricule, { motDePasse: newPwd });
-    setSuccessOpen(true);
+    setErrorMessage("Cette fonction n'est pas disponible dans le frontend. Contactez l'administration pour reinitialiser votre mot de passe.");
+    setErrorOpen(true);
   };
 
   return (
@@ -99,21 +90,6 @@ export default function ForgotPassword() {
             <DialogDescription className="pt-2">{errorMessage}</DialogDescription>
           </DialogHeader>
           <DialogFooter><Button onClick={() => setErrorOpen(false)} className="bg-primary text-primary-foreground rounded-lg">Compris</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={successOpen} onOpenChange={() => { setSuccessOpen(false); setAuthStep('logged_out'); }}>
-        <DialogContent className="sm:max-w-md rounded-xl">
-          <DialogHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center"><CheckCircle2 className="w-5 h-5 text-emerald-600" /></div>
-              <DialogTitle className="text-foreground">Mot de passe modifié</DialogTitle>
-            </div>
-            <DialogDescription className="pt-2">
-              Votre mot de passe a été modifié avec succès. Connectez-vous avec votre matricule et votre nouveau mot de passe.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter><Button onClick={() => { setSuccessOpen(false); setAuthStep('logged_out'); }} className="bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg">Retour à la connexion</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

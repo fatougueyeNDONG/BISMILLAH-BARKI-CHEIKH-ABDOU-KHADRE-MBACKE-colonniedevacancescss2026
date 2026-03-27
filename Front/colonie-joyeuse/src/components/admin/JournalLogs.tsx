@@ -1,10 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
-import { Database, Server, HardDrive, Activity, CheckCircle2, AlertTriangle, Info, Upload, FileUp, Shield, Cpu, RefreshCw, Wrench, FileText } from 'lucide-react';
+import { Database, Server, Activity, Upload, FileUp, Shield, RefreshCw, Wrench, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { Parent } from '@/data/mockData';
 
@@ -35,30 +33,30 @@ export default function JournalLogs() {
 
   // DB tables data
   const dbTables = [
-    { name: 'users', records: 3, rls: true },
+    { name: 'users', records: null as number | null, rls: true },
     { name: 'parents', records: totalParents, rls: true },
-    { name: 'services', records: 8, rls: false },
-    { name: 'sites', records: 4, rls: false },
+    { name: 'services', records: null as number | null, rls: false },
+    { name: 'sites', records: null as number | null, rls: false },
     { name: 'enfants', records: totalEnfants, rls: true },
-    { name: 'listes', records: 3, rls: true },
+    { name: 'listes', records: null as number | null, rls: true },
     { name: 'demandes_inscription', records: totalEnfants, rls: true },
     { name: 'desistements', records: desistements, rls: true },
-    { name: 'alembic_version', records: 1, rls: false },
+    { name: 'alembic_version', records: null as number | null, rls: false },
   ];
 
   // System services
   const systemServices = [
-    { name: 'Base de données', icon: Database, status: 'Opérationnel', uptime: '99.58%' },
-    { name: 'Authentification', icon: Shield, status: 'Opérationnel', uptime: '99.19%' },
-    { name: 'API Backend', icon: Server, status: 'Opérationnel', uptime: '99.50%' },
+    { name: 'Base de données', icon: Database, status: 'À vérifier', uptime: 'N/A' },
+    { name: 'Authentification', icon: Shield, status: 'À vérifier', uptime: 'N/A' },
+    { name: 'API Backend', icon: Server, status: 'À vérifier', uptime: 'N/A' },
   ];
 
   // System health
   const healthMetrics = [
-    { label: 'CPU', value: 25, color: 'bg-gradient-to-r from-amber-500 to-amber-700' },
-    { label: 'Mémoire', value: 36, color: 'bg-gradient-to-r from-amber-500 to-amber-700' },
-    { label: 'Stockage', value: 10, color: 'bg-foreground' },
-    { label: 'Bande passante', value: 52, color: 'bg-foreground' },
+    { label: 'CPU', value: 0, color: 'bg-foreground/30' },
+    { label: 'Mémoire', value: 0, color: 'bg-foreground/30' },
+    { label: 'Stockage', value: 0, color: 'bg-foreground/30' },
+    { label: 'Bande passante', value: 0, color: 'bg-foreground/30' },
   ];
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,7 +97,7 @@ export default function JournalLogs() {
           prenom: vals[prenomIdx],
           nom: vals[nomIdx],
           service: vals[serviceIdx],
-          motDePasse: 'parent123',
+          motDePasse: '',
           email: emailIdx !== -1 ? vals[emailIdx] : undefined,
           telephone: telephoneIdx !== -1 ? vals[telephoneIdx] : undefined,
           premiereConnexion: true,
@@ -183,7 +181,7 @@ export default function JournalLogs() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
             className="bg-card rounded-xl border border-border p-6">
             <h3 className="text-lg font-semibold text-foreground">Santé globale du système</h3>
-            <p className="text-sm text-muted-foreground mb-6">Indicateurs calculés à partir des données et des services en temps réel.</p>
+            <p className="text-sm text-muted-foreground mb-6">Indicateurs techniques non branchés dans le frontend (aucune valeur fictive affichée).</p>
             <div className="space-y-5">
               {healthMetrics.map(m => (
                 <div key={m.label}>
@@ -245,7 +243,7 @@ export default function JournalLogs() {
                   {dbTables.map((table, i) => (
                     <tr key={table.name} className="border-b border-border/50 last:border-0">
                       <td className="py-3.5 px-4 text-sm font-medium text-foreground">{table.name}</td>
-                      <td className="py-3.5 px-4 text-sm font-semibold text-foreground">{table.records}</td>
+                      <td className="py-3.5 px-4 text-sm font-semibold text-foreground">{table.records ?? '—'}</td>
                       <td className="py-3.5 px-4">
                         <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${
                           table.rls
@@ -309,26 +307,8 @@ export default function JournalLogs() {
           <div className="bg-card rounded-xl border border-border p-6">
             <h3 className="text-lg font-semibold text-foreground mb-2">Tâches système</h3>
             <p className="text-sm text-muted-foreground mb-4">Aperçu des opérations automatisées et manuelles.</p>
-            <div className="space-y-3">
-              {[
-                { task: 'Vérification des inscriptions en attente', status: 'Terminé', time: 'Il y a 2h' },
-                { task: 'Synchronisation des listes', status: 'Terminé', time: 'Il y a 4h' },
-                { task: 'Nettoyage des sessions expirées', status: 'Planifié', time: 'Dans 6h' },
-                { task: 'Backup base de données', status: 'Terminé', time: 'Il y a 12h' },
-                { task: 'Envoi notifications désistements', status: 'En cours', time: 'Maintenant' },
-              ].map((t, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-                  <span className="text-sm font-medium text-foreground">{t.task}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground">{t.time}</span>
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${
-                      t.status === 'Terminé' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                      t.status === 'En cours' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                      'bg-muted text-muted-foreground border-border'
-                    }`}>{t.status}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="p-3 rounded-lg bg-muted/30 text-sm text-muted-foreground">
+              Aucune tâche simulée n'est affichée.
             </div>
           </div>
         </motion.div>

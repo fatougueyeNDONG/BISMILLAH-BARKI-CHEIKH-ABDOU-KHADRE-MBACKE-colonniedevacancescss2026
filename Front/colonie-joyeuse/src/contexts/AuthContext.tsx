@@ -1,33 +1,43 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { Parent } from '@/data/mockData';
 
 type UserRole = 'parent' | 'gestionnaire' | 'super_admin' | null;
 type AuthStep = 'logged_out' | 'force_password_change' | 'forgot_password' | 'logged_in';
+type AdminRole = 'gestionnaire' | 'super_admin';
+
+export interface ParentProfile {
+  prenom: string;
+  nom: string;
+  matricule: string;
+  service: string;
+}
 
 interface AuthContextType {
   role: UserRole;
-  parent: Parent | null;
+  parent: ParentProfile | null;
   adminEmail: string | null;
   authStep: AuthStep;
-  loginAsParent: (parent: Parent) => void;
-  loginAsAdmin: (email: string, role: 'gestionnaire' | 'super_admin') => void;
+  token: string | null;
+  loginAsParent: (parent: ParentProfile, token: string, mustChangePassword?: boolean) => void;
+  loginAsAdmin: (email: string, role: AdminRole, token: string, mustChangePassword?: boolean) => void;
   logout: () => void;
   setAuthStep: (step: AuthStep) => void;
-  pendingParent: Parent | null;
-  setPendingParent: (p: Parent | null) => void;
+  pendingParent: ParentProfile | null;
+  setPendingParent: (p: ParentProfile | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole>(null);
-  const [parent, setParent] = useState<Parent | null>(null);
+  const [parent, setParent] = useState<ParentProfile | null>(null);
   const [adminEmail, setAdminEmail] = useState<string | null>(null);
   const [authStep, setAuthStep] = useState<AuthStep>('logged_out');
-  const [pendingParent, setPendingParent] = useState<Parent | null>(null);
+  const [pendingParent, setPendingParent] = useState<ParentProfile | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
-  const loginAsParent = (p: Parent) => {
-    if (p.premiereConnexion) {
+  const loginAsParent = (p: ParentProfile, accessToken: string, mustChangePassword = false) => {
+    setToken(accessToken);
+    if (mustChangePassword) {
       setPendingParent(p);
       setAuthStep('force_password_change');
       return;
@@ -38,10 +48,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthStep('logged_in');
   };
 
-  const loginAsAdmin = (email: string, r: 'gestionnaire' | 'super_admin') => {
+  const loginAsAdmin = (email: string, r: AdminRole, accessToken: string, _mustChangePassword = false) => {
     setRole(r);
     setAdminEmail(email);
     setParent(null);
+    setToken(accessToken);
     setAuthStep('logged_in');
   };
 
@@ -51,10 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAdminEmail(null);
     setAuthStep('logged_out');
     setPendingParent(null);
+    setToken(null);
   };
 
   return (
-    <AuthContext.Provider value={{ role, parent, adminEmail, authStep, loginAsParent, loginAsAdmin, logout, setAuthStep, pendingParent, setPendingParent }}>
+    <AuthContext.Provider value={{ role, parent, adminEmail, authStep, token, loginAsParent, loginAsAdmin, logout, setAuthStep, pendingParent, setPendingParent }}>
       {children}
     </AuthContext.Provider>
   );

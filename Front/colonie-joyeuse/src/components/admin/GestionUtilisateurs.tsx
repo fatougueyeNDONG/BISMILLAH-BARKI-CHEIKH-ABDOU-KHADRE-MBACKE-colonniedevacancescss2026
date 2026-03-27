@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { AdminUser, MOCK_ADMIN_USERS, Parent, MOCK_SITES } from '@/data/mockData';
+import { AdminUser, Parent } from '@/data/mockData';
 import { useInscription } from '@/contexts/InscriptionContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import ImportExcel from './ImportExcel';
 
 export default function GestionUtilisateurs() {
   const { parents, addParent, updateParent, removeParent } = useInscription();
-  const [admins, setAdmins] = useState<AdminUser[]>([...MOCK_ADMIN_USERS]);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
@@ -24,7 +24,7 @@ export default function GestionUtilisateurs() {
   const [newNom, setNewNom] = useState('');
   const [newPrenom, setNewPrenom] = useState('');
   const [newRole, setNewRole] = useState<'gestionnaire' | 'super_admin'>('gestionnaire');
-  const [newPassword, setNewPassword] = useState('admin123');
+  const [newPassword, setNewPassword] = useState('');
   const [newTelephone, setNewTelephone] = useState('');
 
   // Parent creation
@@ -33,7 +33,7 @@ export default function GestionUtilisateurs() {
   const [newParentPrenom, setNewParentPrenom] = useState('');
   const [newParentNom, setNewParentNom] = useState('');
   const [newParentService, setNewParentService] = useState('');
-  const [newParentPassword, setNewParentPassword] = useState('parent123');
+  const [newParentPassword, setNewParentPassword] = useState('');
   const [newParentEmail, setNewParentEmail] = useState('');
   const [newParentTelephone, setNewParentTelephone] = useState('');
   const [newParentSite, setNewParentSite] = useState('');
@@ -62,7 +62,7 @@ export default function GestionUtilisateurs() {
         errors.push({ ligne: i + 2, message: `Matricule "${row.matricule}" déjà existant` });
         return;
       }
-      addParent({ matricule: row.matricule, prenom: row.prenom, nom: row.nom, service: row.service, site: row.site || undefined, email: row.email || undefined, telephone: row.telephone || undefined, motDePasse: 'parent123', premiereConnexion: true });
+      addParent({ matricule: row.matricule, prenom: row.prenom, nom: row.nom, service: row.service, site: row.site || undefined, email: row.email || undefined, telephone: row.telephone || undefined, motDePasse: '', premiereConnexion: true });
       success++;
     });
     return { success, errors };
@@ -85,7 +85,7 @@ export default function GestionUtilisateurs() {
         errors.push({ ligne: i + 2, message: `Email "${row.email}" déjà existant` });
         return;
       }
-      setAdmins(prev => [...prev, { id: `a_${Date.now()}_${i}`, email: row.email, prenom: row.prenom, nom: row.nom, role: role as 'gestionnaire' | 'super_admin', actif: true, dateCreation: new Date().toISOString().split('T')[0], motDePasse: 'admin123', telephone: row.telephone || '' }]);
+      setAdmins(prev => [...prev, { id: `a_${Date.now()}_${i}`, email: row.email, prenom: row.prenom, nom: row.nom, role: role as 'gestionnaire' | 'super_admin', actif: true, dateCreation: new Date().toISOString().split('T')[0], motDePasse: '', telephone: row.telephone || '' }]);
       success++;
     });
     return { success, errors };
@@ -102,7 +102,7 @@ export default function GestionUtilisateurs() {
       motDePasse: newPassword, telephone: newTelephone,
     }]);
     setCreateOpen(false);
-    setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewPassword('admin123'); setNewTelephone('');
+    setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewPassword(''); setNewTelephone('');
     toast({ title: '✅ Administrateur créé' });
   };
 
@@ -134,7 +134,7 @@ export default function GestionUtilisateurs() {
     if (!newParentMatricule || !newParentPrenom || !newParentNom || !newParentService) return;
     addParent({ matricule: newParentMatricule, prenom: newParentPrenom, nom: newParentNom, service: newParentService, site: newParentSite || undefined, motDePasse: newParentPassword, email: newParentEmail, telephone: newParentTelephone, premiereConnexion: true });
     setCreateParentOpen(false);
-    setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentPassword('parent123'); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
+    setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentPassword(''); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
     toast({ title: '✅ Parent créé' });
   };
 
@@ -156,7 +156,7 @@ export default function GestionUtilisateurs() {
       lines.forEach(line => {
         const [matricule, prenom, nom, service] = line.split(',').map(s => s.trim());
         if (matricule && prenom && nom && service) {
-          addParent({ matricule, prenom, nom, service, motDePasse: 'parent123' });
+          addParent({ matricule, prenom, nom, service, motDePasse: '' });
           count++;
         }
       });
@@ -365,17 +365,7 @@ export default function GestionUtilisateurs() {
               <div className="space-y-2"><Label>Nom</Label><Input value={newParentNom} onChange={e => setNewParentNom(e.target.value)} className="rounded-lg" /></div>
             </div>
             <div className="space-y-2"><Label>Service</Label><Input value={newParentService} onChange={e => setNewParentService(e.target.value)} className="rounded-lg" /></div>
-            <div className="space-y-2">
-              <Label>Site</Label>
-              <Select value={newParentSite} onValueChange={setNewParentSite}>
-                <SelectTrigger className="rounded-lg"><SelectValue placeholder="Sélectionner un site" /></SelectTrigger>
-                <SelectContent>
-                  {MOCK_SITES.map(s => (
-                    <SelectItem key={s.id} value={s.code}>{s.nom}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <div className="space-y-2"><Label>Site</Label><Input value={newParentSite} onChange={e => setNewParentSite(e.target.value)} placeholder="Code du site (ex: VDN)" className="rounded-lg" /></div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Email</Label><Input value={newParentEmail} onChange={e => setNewParentEmail(e.target.value)} type="email" className="rounded-lg" /></div>
               <div className="space-y-2"><Label>Téléphone</Label><Input value={newParentTelephone} onChange={e => setNewParentTelephone(e.target.value)} className="rounded-lg" /></div>
@@ -401,17 +391,7 @@ export default function GestionUtilisateurs() {
                 <div className="space-y-2"><Label>Nom</Label><Input value={editingParent.nom} onChange={e => setEditingParent({ ...editingParent, nom: e.target.value })} className="rounded-lg" /></div>
               </div>
               <div className="space-y-2"><Label>Service</Label><Input value={editingParent.service} onChange={e => setEditingParent({ ...editingParent, service: e.target.value })} className="rounded-lg" /></div>
-              <div className="space-y-2">
-                <Label>Site</Label>
-                <Select value={editingParent.site || ''} onValueChange={v => setEditingParent({ ...editingParent, site: v })}>
-                  <SelectTrigger className="rounded-lg"><SelectValue placeholder="Sélectionner un site" /></SelectTrigger>
-                  <SelectContent>
-                    {MOCK_SITES.map(s => (
-                      <SelectItem key={s.id} value={s.code}>{s.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <div className="space-y-2"><Label>Site</Label><Input value={editingParent.site || ''} onChange={e => setEditingParent({ ...editingParent, site: e.target.value })} placeholder="Code du site (ex: VDN)" className="rounded-lg" /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Email</Label><Input value={editingParent.email || ''} onChange={e => setEditingParent({ ...editingParent, email: e.target.value })} className="rounded-lg" /></div>
                 <div className="space-y-2"><Label>Téléphone</Label><Input value={editingParent.telephone || ''} onChange={e => setEditingParent({ ...editingParent, telephone: e.target.value })} className="rounded-lg" /></div>

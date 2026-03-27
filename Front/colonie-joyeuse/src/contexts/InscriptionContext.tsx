@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { Enfant, MOCK_ENFANTS, MOCK_PARENTS, MOCK_HISTORIQUE, AppSettings, DEFAULT_SETTINGS, Parent, HistoriqueEntry } from '@/data/mockData';
+import { Enfant, AppSettings, Parent, HistoriqueEntry } from '@/data/mockData';
 
 interface InscriptionContextType {
   enfants: Enfant[];
@@ -32,11 +32,25 @@ interface InscriptionContextType {
 
 const InscriptionContext = createContext<InscriptionContextType | undefined>(undefined);
 
+const EMPTY_SETTINGS: AppSettings = {
+  colonieNom: '',
+  dateDebutInscriptions: '',
+  dateFinInscriptions: '',
+  dateDebutColonie: '',
+  dateFinColonie: '',
+  capaciteMax: null,
+  maxEnfantsParParent: null,
+  ageMin: 0,
+  ageMax: 0,
+  inscriptionsOuvertes: true,
+  accesParentsActif: true,
+};
+
 export function InscriptionProvider({ children }: { children: ReactNode }) {
-  const [enfants, setEnfants] = useState<Enfant[]>([...MOCK_ENFANTS]);
-  const [parents, setParents] = useState<Parent[]>([...MOCK_PARENTS]);
-  const [settings, setSettings] = useState<AppSettings>({ ...DEFAULT_SETTINGS });
-  const [historique, setHistorique] = useState<HistoriqueEntry[]>([...MOCK_HISTORIQUE]);
+  const [enfants, setEnfants] = useState<Enfant[]>([]);
+  const [parents, setParents] = useState<Parent[]>([]);
+  const [settings, setSettings] = useState<AppSettings>({ ...EMPTY_SETTINGS });
+  const [historique, setHistorique] = useState<HistoriqueEntry[]>([]);
 
   const updateSettings = (s: Partial<AppSettings>) => {
     setSettings(prev => ({ ...prev, ...s }));

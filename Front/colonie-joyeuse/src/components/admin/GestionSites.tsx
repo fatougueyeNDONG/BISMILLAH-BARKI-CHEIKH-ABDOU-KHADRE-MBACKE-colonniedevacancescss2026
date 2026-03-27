@@ -17,11 +17,7 @@ interface SiteConfig {
   description: string;
 }
 
-const INITIAL_SITES: SiteConfig[] = [
-  { id: 's1', nom: 'VDN', code: 'VDN', description: '' },
-  { id: 's2', nom: 'ZIGUINCHOR', code: 'ZIG', description: '' },
-  { id: 's3', nom: 'MBOUR', code: 'MBR', description: '' },
-];
+const INITIAL_SITES: SiteConfig[] = [];
 
 export default function GestionSites() {
   const [sites, setSites] = useState<SiteConfig[]>([...INITIAL_SITES]);
