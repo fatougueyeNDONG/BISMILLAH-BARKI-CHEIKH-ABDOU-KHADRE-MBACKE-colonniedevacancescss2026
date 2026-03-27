@@ -169,6 +169,11 @@ def upsert_user(
         is_active=payload.is_active,
         email=payload.email,
         role=payload.role,
+        parent_prenom=payload.parent_prenom,
+        parent_nom=payload.parent_nom,
+        parent_service=payload.parent_service,
+        parent_site_code=payload.parent_site_code,
+        parent_telephone=payload.parent_telephone,
     )
     db.commit()
     db.refresh(user)

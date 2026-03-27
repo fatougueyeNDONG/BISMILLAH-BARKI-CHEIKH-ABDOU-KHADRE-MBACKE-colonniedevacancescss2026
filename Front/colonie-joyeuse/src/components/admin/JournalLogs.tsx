@@ -1,6 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useInscription } from '@/contexts/InscriptionContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/lib/api';
 import { Database, Server, Activity, Upload, FileUp, Shield, RefreshCw, Wrench, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
@@ -13,41 +15,81 @@ const tabs = [
 ];
 
 export default function JournalLogs() {
+  const { token } = useAuth();
   const { enfants, parents, settings, historique } = useInscription();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('systeme');
   const [refreshing, setRefreshing] = useState(false);
+  const [apiStats, setApiStats] = useState<{
+    total_users: number;
+    total_parents: number;
+    total_enfants: number;
+    total_demandes: number;
+    selected_total: number;
+    selected_by_liste: Record<string, number>;
+    desistements_waiting: number;
+  } | null>(null);
+  const [apiHistorique, setApiHistorique] = useState<Array<{ id: string; date: string; heure: string; role: string; utilisateur: string; details: string }>>([]);
 
-  const totalEnfants = enfants.length;
-  const totalParents = parents.length;
-  const desistements = enfants.filter(e => e.desistement).length;
+  const totalEnfants = apiStats?.total_enfants ?? enfants.length;
+  const totalParents = apiStats?.total_parents ?? parents.length;
+  const totalDemandes = apiStats?.total_demandes ?? enfants.length;
+  const totalUsers = apiStats?.total_users ?? null;
+  const desistements = apiStats?.desistements_waiting ?? enfants.filter(e => e.desistement).length;
+
+  const loadMonitoringData = async () => {
+    if (!token) return;
+    try {
+      const [stats, histo] = await Promise.all([
+        apiRequest<{
+          total_users: number;
+          total_parents: number;
+          total_enfants: number;
+          total_demandes: number;
+          selected_total: number;
+          selected_by_liste: Record<string, number>;
+          desistements_waiting: number;
+        }>('/admin/stats', { token }),
+        apiRequest<Array<{ id: string; date: string; heure: string; role: string; utilisateur: string; details: string }>>('/admin/historique?limit=50', { token }),
+      ]);
+      setApiStats(stats);
+      setApiHistorique(histo);
+    } catch {
+      setApiStats(null);
+      setApiHistorique([]);
+    }
+  };
+
+  useEffect(() => {
+    loadMonitoringData();
+  }, [token]);
 
   const handleRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
-    toast({ title: '✅ Données rafraîchies' });
+    loadMonitoringData().finally(() => setRefreshing(false));
+    toast({ title: '✅ Données rafraîchies depuis le backend' });
   };
 
   // DB tables data
   const dbTables = [
-    { name: 'users', records: null as number | null, rls: true },
+    { name: 'users', records: totalUsers, rls: true },
     { name: 'parents', records: totalParents, rls: true },
     { name: 'services', records: null as number | null, rls: false },
     { name: 'sites', records: null as number | null, rls: false },
     { name: 'enfants', records: totalEnfants, rls: true },
     { name: 'listes', records: null as number | null, rls: true },
-    { name: 'demandes_inscription', records: totalEnfants, rls: true },
+    { name: 'demandes_inscription', records: totalDemandes, rls: true },
     { name: 'desistements', records: desistements, rls: true },
     { name: 'alembic_version', records: null as number | null, rls: false },
   ];
 
   // System services
   const systemServices = [
-    { name: 'Base de données', icon: Database, status: 'À vérifier', uptime: 'N/A' },
-    { name: 'Authentification', icon: Shield, status: 'À vérifier', uptime: 'N/A' },
-    { name: 'API Backend', icon: Server, status: 'À vérifier', uptime: 'N/A' },
+    { name: 'Base de données', icon: Database, status: apiStats ? 'Connectée' : 'À vérifier', uptime: apiStats ? 'OK' : 'N/A' },
+    { name: 'Authentification', icon: Shield, status: token ? 'Connectée' : 'À vérifier', uptime: token ? 'Session active' : 'N/A' },
+    { name: 'API Backend', icon: Server, status: apiStats ? 'Disponible' : 'À vérifier', uptime: apiStats ? 'OK' : 'N/A' },
   ];
 
   // System health
@@ -270,7 +312,7 @@ export default function JournalLogs() {
           <div className="bg-card rounded-xl border border-border p-6">
             <h3 className="text-lg font-semibold text-foreground mb-4">Dernières actions</h3>
             <div className="space-y-2">
-              {historique.slice(0, 15).map(h => (
+              {(apiHistorique.length > 0 ? apiHistorique : historique.slice(0, 15)).map(h => (
                 <div key={h.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 text-sm">
                   <span className="tabular-nums text-xs text-muted-foreground w-20 shrink-0">{h.date}</span>
                   <span className="tabular-nums text-xs text-muted-foreground w-12 shrink-0">{h.heure}</span>
@@ -281,7 +323,7 @@ export default function JournalLogs() {
                   <span className="text-muted-foreground truncate flex-1">{h.details}</span>
                 </div>
               ))}
-              {historique.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Aucune action enregistrée</p>}
+              {apiHistorique.length === 0 && historique.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Aucune action enregistrée</p>}
             </div>
           </div>
         </motion.div>

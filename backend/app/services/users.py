@@ -182,6 +182,11 @@ def update_user(
     is_active: Optional[bool],
     email: Optional[str],
     role: Optional[UserRole],
+    parent_prenom: Optional[str] = None,
+    parent_nom: Optional[str] = None,
+    parent_service: Optional[str] = None,
+    parent_site_code: Optional[str] = None,
+    parent_telephone: Optional[str] = None,
 ) -> User:
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -196,6 +201,26 @@ def update_user(
         if role not in {UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN}:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Rôle invalide pour un administrateur.")
         user.role = role
+
+    # Parent profile updates (super admin screen)
+    if user.role == UserRole.PARENT and user.parent_profile is not None:
+        parent = user.parent_profile
+        if parent_prenom is not None:
+            parent.prenom = parent_prenom
+        if parent_nom is not None:
+            parent.nom = parent_nom
+        if parent_telephone is not None:
+            parent.telephone = parent_telephone
+        if parent_service is not None:
+            service = _get_or_create_service(db, parent_service)
+            parent.service_id = service.id
+        if parent_site_code is not None:
+            site = _get_or_create_site(db, parent_site_code)
+            parent.site_id = site.id if site else None
+        # Keep parent email aligned with user email when provided.
+        if email is not None:
+            parent.email = email
+        db.add(parent)
     db.flush()
     return user
 

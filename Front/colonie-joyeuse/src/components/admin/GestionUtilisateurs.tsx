@@ -319,9 +319,27 @@ export default function GestionUtilisateurs() {
     }
   };
 
-  const handleEditParent = () => {
-    toast({ title: 'Information', description: "La modification détaillée du profil parent n'est pas encore exposée par endpoint backend." });
-    setEditParentOpen(false);
+  const handleEditParent = async () => {
+    if (!token || !editingParent) return;
+    try {
+      await apiRequest(`/admin/users/${editingParent.id}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({
+          email: editingParent.email || null,
+          parent_prenom: editingParent.prenom,
+          parent_nom: editingParent.nom,
+          parent_service: editingParent.service,
+          parent_site_code: editingParent.site || null,
+          parent_telephone: editingParent.telephone || null,
+        }),
+      });
+      await loadUsers();
+      toast({ title: '✅ Parent modifié' });
+      setEditParentOpen(false);
+    } catch (error) {
+      toast({ title: "Modification impossible", description: error instanceof Error ? error.message : 'Erreur API', variant: 'destructive' });
+    }
   };
 
   const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -602,7 +620,7 @@ export default function GestionUtilisateurs() {
               <div className="space-y-2"><Label>Site</Label><Input value={editingParent.site || ''} onChange={e => setEditingParent({ ...editingParent, site: e.target.value })} placeholder="Code du site (ex: VDN)" className="rounded-lg" /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Email</Label><Input value={editingParent.email || ''} onChange={e => setEditingParent({ ...editingParent, email: e.target.value })} className="rounded-lg" /></div>
-                <div className="space-y-2"><Label>Téléphone</Label><Input value="" disabled className="rounded-lg bg-muted/50" /></div>
+                <div className="space-y-2"><Label>Téléphone</Label><Input value={editingParent.telephone || ''} onChange={e => setEditingParent({ ...editingParent, telephone: e.target.value })} className="rounded-lg" /></div>
               </div>
             </div>
           )}
