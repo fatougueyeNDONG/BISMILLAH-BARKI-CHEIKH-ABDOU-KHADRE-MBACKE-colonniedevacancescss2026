@@ -171,11 +171,7 @@ export default function GestionUtilisateurs() {
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
       if (!row.matricule || !row.prenom || !row.nom || !row.service) {
-        errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (matricule, prenom, nom, service, password)' });
-        continue;
-      }
-      if (!row.password || String(row.password).length < 8) {
-        errors.push({ ligne: i + 2, message: 'Le mot de passe est obligatoire (min 8 caractères).' });
+        errors.push({ ligne: i + 2, message: 'Champs obligatoires manquants (matricule, prenom, nom, service)' });
         continue;
       }
       if (parents.some(p => p.matricule === row.matricule)) {
@@ -195,7 +191,7 @@ export default function GestionUtilisateurs() {
             nom: row.nom,
             service: row.service,
             site_code: row.site || null,
-            password: row.password,
+            password: DEFAULT_PARENT_PASSWORD,
           }),
         });
         success++;
@@ -401,8 +397,13 @@ export default function GestionUtilisateurs() {
     let count = 0;
     let errors = 0;
     for (const line of lines) {
-      const [matricule, prenom, nom, service, email, site_code, password] = line.split(',').map(s => s.trim());
-      if (!matricule || !prenom || !nom || !service || !password || password.length < 8) {
+      const parts = line.split(',').map(s => s.trim());
+      if (parts.length < 4) {
+        errors++;
+        continue;
+      }
+      const [matricule, prenom, nom, service, email = '', site_code = ''] = parts;
+      if (!matricule || !prenom || !nom || !service) {
         errors++;
         continue;
       }
@@ -419,7 +420,7 @@ export default function GestionUtilisateurs() {
             nom,
             service,
             site_code: site_code || null,
-            password,
+            password: DEFAULT_PARENT_PASSWORD,
           }),
         });
         count++;
@@ -585,7 +586,7 @@ export default function GestionUtilisateurs() {
           </div>
           <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
             <p className="text-xs text-muted-foreground">
-              <strong className="text-accent">📄 Format CSV :</strong> matricule, prenom, nom, service, email, site_code, password (mot de passe min 8 caractères).
+              <strong className="text-accent">📄 Format CSV :</strong> matricule, prenom, nom, service, email, site_code. Mot de passe initial : <strong>Passer123</strong> (changement obligatoire à la première connexion).
             </p>
           </div>
         </TabsContent>
@@ -850,7 +851,16 @@ export default function GestionUtilisateurs() {
         open={importExcelOpen}
         onOpenChange={setImportExcelOpen}
         entities={[
-          { value: 'parents', config: { label: 'Parents / Agents CSS', colonnes: ['matricule', 'prenom', 'nom', 'service', 'site', 'email', 'password'], description: 'Colonnes requises : matricule, prenom, nom, service, password. Optionnelles : site, email.' }, onImport: handleImportParents },
+          {
+            value: 'parents',
+            config: {
+              label: 'Parents / Agents CSS',
+              colonnes: ['matricule', 'prenom', 'nom', 'service', 'site', 'email'],
+              description:
+                'Colonnes requises : matricule, prenom, nom, service. Optionnelles : site, email. Mot de passe initial : Passer123 (changement obligatoire à la première connexion).',
+            },
+            onImport: handleImportParents,
+          },
           { value: 'admins', config: { label: 'Administrateurs', colonnes: ['email', 'prenom', 'nom', 'role', 'telephone'], description: 'Colonnes requises : email, prenom, nom, role (gestionnaire ou super_admin). Optionnelle : telephone.' }, onImport: handleImportAdmins },
         ]}
       />
