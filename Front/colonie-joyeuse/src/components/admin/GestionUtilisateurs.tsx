@@ -666,7 +666,7 @@ export default function GestionUtilisateurs() {
                   <SelectTrigger className="rounded-lg">
                     <SelectValue placeholder="Sélectionner une agence" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent side="bottom" avoidCollisions={false} className="z-[200]">
                     {refSites.map(s => (
                       <SelectItem key={s.id} value={String(s.code)}>
                         {s.nom} (code {s.code})
@@ -739,7 +739,7 @@ export default function GestionUtilisateurs() {
                     <SelectTrigger className="rounded-lg">
                       <SelectValue placeholder="Sélectionner une agence" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent side="bottom" avoidCollisions={false} className="z-[200]">
                       {refSites.map(s => (
                         <SelectItem key={s.id} value={String(s.code)}>
                           {s.nom} (code {s.code})
