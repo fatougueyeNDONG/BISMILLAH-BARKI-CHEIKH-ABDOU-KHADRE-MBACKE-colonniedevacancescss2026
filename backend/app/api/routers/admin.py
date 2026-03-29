@@ -70,6 +70,11 @@ class SiteConfigIn(BaseModel):
     description: str | None = None
 
 
+class ServiceConfigIn(BaseModel):
+    nom: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+
+
 def _default_runtime_settings() -> dict:
     return RuntimeSettingsIn().model_dump()
 
@@ -99,6 +104,10 @@ def update_runtime_settings(
     return data
 
 
+def _service_nom_normalized(nom: str) -> str:
+    return " ".join(str(nom).strip().split())
+
+
 @router.get("/services")
 def list_services(
     db: Session = Depends(get_db),
@@ -108,6 +117,69 @@ def list_services(
     _ = user
     rows = db.query(Service).order_by(Service.nom.asc()).all()
     return [{"id": r.id, "nom": r.nom, "description": r.description} for r in rows]
+
+
+@router.post("/services")
+def create_service(
+    payload: ServiceConfigIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+):
+    _ = user
+    nom = _service_nom_normalized(payload.nom)
+    if not nom:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nom du service requis.")
+    duplicate = db.query(Service).filter(func.lower(Service.nom) == nom.lower()).first()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="Un service avec ce nom existe déjà.")
+    desc = ((payload.description or "").strip() or "-")[:191]
+    row = Service(nom=nom, description=desc)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "nom": row.nom, "description": row.description}
+
+
+@router.patch("/services/{service_id}")
+def update_service(
+    service_id: int,
+    payload: ServiceConfigIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+):
+    _ = user
+    row = db.query(Service).filter(Service.id == service_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Service introuvable.")
+    nom = _service_nom_normalized(payload.nom)
+    if not nom:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nom du service requis.")
+    other = db.query(Service).filter(func.lower(Service.nom) == nom.lower(), Service.id != service_id).first()
+    if other:
+        raise HTTPException(status_code=400, detail="Un service avec ce nom existe déjà.")
+    row.nom = nom
+    row.description = ((payload.description or "").strip() or "-")[:191]
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "nom": row.nom, "description": row.description}
+
+
+@router.delete("/services/{service_id}")
+def delete_service(
+    service_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+):
+    _ = user
+    row = db.query(Service).filter(Service.id == service_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Service introuvable.")
+    linked = db.query(Parent).filter(Parent.service_id == row.id).first()
+    if linked:
+        raise HTTPException(status_code=400, detail="Suppression impossible : ce service est relié à des parents.")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/sites")

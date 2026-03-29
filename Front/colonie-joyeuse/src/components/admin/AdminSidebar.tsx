@@ -4,7 +4,7 @@ import {
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, FileText, List, BarChart3, Users, Settings, ChevronDown, Award, UserCheck, History, Database, ListChecks, MapPin, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, FileText, List, BarChart3, Users, Settings, ChevronDown, Award, UserCheck, History, Database, ListChecks, Briefcase, MapPin, MessageSquare } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import logo from '@/assets/logo.png';
 
@@ -116,6 +116,11 @@ export function AdminSidebar({ currentPage, onNavigate, isSuperAdmin }: Props) {
                 <SidebarMenuItem>
                   <SidebarMenuButton onClick={() => onNavigate('gestion_listes_config')} isActive={currentPage === 'gestion_listes_config'} tooltip="Listes">
                     <ListChecks className="w-4 h-4" />{!collapsed && <span>Listes</span>}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton onClick={() => onNavigate('gestion_services')} isActive={currentPage === 'gestion_services'} tooltip="Services">
+                    <Briefcase className="w-4 h-4" />{!collapsed && <span>Services</span>}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
