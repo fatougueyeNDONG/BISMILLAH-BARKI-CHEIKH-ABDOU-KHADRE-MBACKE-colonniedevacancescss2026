@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models.enums import DemandeStatut, LienParente, ListeCode
 from app.models.models import DemandeInscription, Enfant, Liste, Parent, Service, User
 from app.services.runtime_settings_store import get_max_enfants_par_parent
+from app.services.users import normalize_parent_nin_for_storage, normalize_parent_telephone_for_storage
 
 DEFAULT_MAX_ENFANTS_PAR_PARENT = 2
 
@@ -97,9 +98,9 @@ def create_inscription_for_parent_user(
             nom=parent_nom,
             matricule=parent_matricule,
             email=None,
-            telephone="-",
+            telephone=normalize_parent_telephone_for_storage(None, matricule=parent_matricule),
             genre="-",
-            nin="-",
+            nin=normalize_parent_nin_for_storage(None, matricule=parent_matricule),
             adresse="-",
             service_text=service.nom,
             site_text="",

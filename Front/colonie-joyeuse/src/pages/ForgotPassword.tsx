@@ -70,7 +70,10 @@ export default function ForgotPassword() {
                 <Input type="password" placeholder="Confirmez" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSubmit()} className="pl-10 h-12 rounded-lg" />
               </div>
             </div>
-            <Button onClick={handleSubmit} className="w-full h-12 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 font-semibold">
+            <Button
+              onClick={handleSubmit}
+              className="w-full h-12 rounded-lg font-semibold border-0 !bg-[#0d2149] !text-white shadow-sm hover:!bg-[#142a5c] focus-visible:ring-[#0d2149]/40"
+            >
               Définir le nouveau mot de passe
             </Button>
             <button onClick={() => setAuthStep('logged_out')} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">

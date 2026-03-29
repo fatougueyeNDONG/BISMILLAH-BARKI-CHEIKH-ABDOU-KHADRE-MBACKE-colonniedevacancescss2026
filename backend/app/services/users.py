@@ -59,6 +59,22 @@ def _stash_admin_email(email: str | None) -> str | None:
     return e[:100] if e else None
 
 
+def normalize_parent_nin_for_storage(nin: str | None, *, matricule: str) -> str:
+    """Évite la contrainte unique sur `parents.nin` quand le NIN n'est pas fourni (plusieurs « - » interdits)."""
+    s = (nin or "").strip()
+    if not s or s == "-":
+        return f"non-renseigne:{matricule}"[:191]
+    return s[:191]
+
+
+def normalize_parent_telephone_for_storage(telephone: str | None, *, matricule: str) -> str:
+    """Évite la contrainte unique sur `parents.telephone` quand le numéro n'est pas fourni."""
+    s = (telephone or "").strip()
+    if not s or s == "-":
+        return f"tel:{matricule}"[:191]
+    return s[:191]
+
+
 def create_user_superadmin(
     *,
     db: Session,
@@ -79,8 +95,8 @@ def create_user_superadmin(
         nom_parent = parent_payload["nom"]
         service_nom = parent_payload["service"]
         site_code = parent_payload.get("site_code")
-        telephone = parent_payload.get("telephone") or "-"
-        nin = parent_payload.get("nin") or "-"
+        telephone = normalize_parent_telephone_for_storage(parent_payload.get("telephone"), matricule=matricule)
+        nin = normalize_parent_nin_for_storage(parent_payload.get("nin"), matricule=matricule)
         genre = parent_payload.get("genre") or "-"
         adresse = parent_payload.get("adresse") or "-"
 
@@ -227,7 +243,7 @@ def update_user(
         if parent_nom is not None:
             parent.nom = parent_nom
         if parent_telephone is not None:
-            parent.telephone = parent_telephone
+            parent.telephone = normalize_parent_telephone_for_storage(parent_telephone, matricule=parent.matricule)
         if parent_service is not None:
             service = _get_or_create_service(db, parent_service)
             parent.service_id = service.id
