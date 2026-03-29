@@ -3,24 +3,33 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base
 from app.models.enums import DemandeStatut, LienParente, ListeCode, Sexe, UserRole
+from app.models.int_columns import (
+    DEMANDE_STATUT_TO_INT,
+    IntEnumType,
+    LIEN_TO_INT,
+    LISTE_CODE_TO_INT,
+    SEXE_TO_INT,
+    USER_ROLE_TO_INT,
+)
 
 
-class User(TimestampMixin, Base):
+class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    matricule: Mapped[Optional[str]] = mapped_column(String(50), unique=True, index=True, nullable=True)
-    email: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, nullable=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    matricule: Mapped[str] = mapped_column(String(191), nullable=False)
+    name: Mapped[str] = mapped_column(String(191), nullable=False)
+    password: Mapped[str] = mapped_column(String(191), nullable=False)
+    role: Mapped[UserRole] = mapped_column(IntEnumType(UserRole, USER_ROLE_TO_INT), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    remember_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     parent_profile: Mapped[Optional["Parent"]] = relationship(back_populates="user", uselist=False)
 
@@ -28,128 +37,135 @@ class User(TimestampMixin, Base):
 class Service(Base):
     __tablename__ = "services"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    nom: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    nom: Mapped[str] = mapped_column(String(191), nullable=False)
+    description: Mapped[str] = mapped_column(String(191), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    parents: Mapped[List["Parent"]] = relationship(back_populates="service")
+    parents: Mapped[List["Parent"]] = relationship(back_populates="service_obj")
 
 
 class Site(Base):
     __tablename__ = "sites"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    nom: Mapped[str] = mapped_column(String(255), nullable=False)
-    code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    nom: Mapped[str] = mapped_column(String(191), nullable=False)
+    code: Mapped[int] = mapped_column(Integer, nullable=False)
+    description: Mapped[str] = mapped_column(String(191), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    parents: Mapped[List["Parent"]] = relationship(back_populates="site")
+    parents: Mapped[List["Parent"]] = relationship(back_populates="site_obj")
 
 
-class Parent(TimestampMixin, Base):
+class Parent(Base):
     __tablename__ = "parents"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    prenom: Mapped[str] = mapped_column(String(255), nullable=False)
-    nom: Mapped[str] = mapped_column(String(255), nullable=False)
-    matricule: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
-    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    telephone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    genre: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
-    nin: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    adresse: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    matricule: Mapped[str] = mapped_column(String(191), nullable=False)
+    prenom: Mapped[str] = mapped_column(String(191), nullable=False)
+    nom: Mapped[str] = mapped_column(String(191), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(191), nullable=True)
+    telephone: Mapped[str] = mapped_column(String(191), nullable=False)
+    genre: Mapped[str] = mapped_column(String(191), nullable=False)
+    nin: Mapped[str] = mapped_column(String(191), nullable=False)
+    adresse: Mapped[str] = mapped_column(String(191), nullable=False)
+    service_text: Mapped[str] = mapped_column("service", String(191), nullable=False)
+    site_text: Mapped[str] = mapped_column("site", String(191), nullable=False)
 
-    service_id: Mapped[Optional[int]] = mapped_column(ForeignKey("services.id"), nullable=True)
-    site_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sites.id"), nullable=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, nullable=False)
+    service_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("services.id"), nullable=True)
+    site_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("sites.id"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
 
-    user: Mapped["User"] = relationship(back_populates="parent_profile")
-    service: Mapped[Optional["Service"]] = relationship(back_populates="parents")
-    site: Mapped[Optional["Site"]] = relationship(back_populates="parents")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped[Optional["User"]] = relationship(back_populates="parent_profile")
+    service_obj: Mapped[Optional["Service"]] = relationship(back_populates="parents", foreign_keys=[service_id])
+    site_obj: Mapped[Optional["Site"]] = relationship(back_populates="parents", foreign_keys=[site_id])
 
     enfants: Mapped[List["Enfant"]] = relationship(back_populates="parent", cascade="all, delete-orphan")
 
 
-class Enfant(TimestampMixin, Base):
+class Enfant(Base):
     __tablename__ = "enfants"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    parent_id: Mapped[int] = mapped_column(ForeignKey("parents.id"), index=True, nullable=False)
-    prenom: Mapped[str] = mapped_column(String(255), nullable=False)
-    nom: Mapped[str] = mapped_column(String(255), nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    parent_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("parents.id"), index=True, nullable=False)
+    prenom: Mapped[str] = mapped_column(String(191), nullable=False)
+    nom: Mapped[str] = mapped_column(String(191), nullable=False)
     date_naissance: Mapped[date] = mapped_column(Date, nullable=False)
-    sexe: Mapped[Sexe] = mapped_column(Enum(Sexe, name="sexe"), nullable=False)
-    lien_parente: Mapped[LienParente] = mapped_column(Enum(LienParente, name="lien_parente"), nullable=False)
-    is_titulaire: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    sexe: Mapped[Sexe] = mapped_column(IntEnumType(Sexe, SEXE_TO_INT), nullable=False)
+    lien_parente: Mapped[LienParente] = mapped_column(IntEnumType(LienParente, LIEN_TO_INT), nullable=False)
+    is_titulaire: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     parent: Mapped["Parent"] = relationship(back_populates="enfants")
-    demande_inscription: Mapped[Optional["DemandeInscription"]] = relationship(back_populates="enfant", uselist=False)
+    demande_inscription: Mapped[Optional["DemandeInscription"]] = relationship(
+        back_populates="enfant",
+        uselist=False,
+    )
 
 
 class Liste(Base):
     __tablename__ = "listes"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    code: Mapped[ListeCode] = mapped_column(Enum(ListeCode, name="liste_code"), unique=True, nullable=False)
-    nom: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    nom: Mapped[str] = mapped_column(String(191), nullable=False)
+    code: Mapped[ListeCode] = mapped_column(IntEnumType(ListeCode, LISTE_CODE_TO_INT), nullable=False)
+    nombre_max: Mapped[int] = mapped_column(Integer, nullable=False)
+    description: Mapped[str] = mapped_column(String(191), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     demandes: Mapped[List["DemandeInscription"]] = relationship(back_populates="liste")
 
 
 class DemandeInscription(Base):
-    __tablename__ = "demandes_inscription"
-    __table_args__ = (
-        UniqueConstraint("enfant_id", name="uq_demande_enfant"),
-        UniqueConstraint("liste_id", "rang_dans_liste", name="uq_liste_rang"),
-    )
+    """Table PostgreSQL `demandes` — nom de classe inchangé pour le code métier."""
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    enfant_id: Mapped[int] = mapped_column(ForeignKey("enfants.id"), nullable=False)
-    liste_id: Mapped[int] = mapped_column(ForeignKey("listes.id"), nullable=False, index=True)
-    date_inscription: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
-    rang_dans_liste: Mapped[int] = mapped_column(Integer, nullable=False)
+    __tablename__ = "demandes"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    date_inscription: Mapped[date] = mapped_column(Date, nullable=False)
+    rang_dans_liste: Mapped[int] = mapped_column("rang", Integer, nullable=False)
     statut: Mapped[DemandeStatut] = mapped_column(
-        Enum(DemandeStatut, name="demande_statut"),
+        IntEnumType(DemandeStatut, DEMANDE_STATUT_TO_INT),
         nullable=False,
-        server_default=DemandeStatut.SOUMISE.value,
     )
-    non_validation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    non_validation_reason: Mapped[str] = mapped_column("motif_rejet", String(191), nullable=False)
+    liste_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("listes.id"), nullable=False)
+    enfant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("enfants.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
 
-    is_selection_finale: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    selected_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    selected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     enfant: Mapped["Enfant"] = relationship(back_populates="demande_inscription")
     liste: Mapped["Liste"] = relationship(back_populates="demandes")
-    selected_by: Mapped[Optional["User"]] = relationship(foreign_keys=[selected_by_user_id])
-
-    desistement: Mapped[Optional["Desistement"]] = relationship(back_populates="demande_inscription", uselist=False)
+    desistement: Mapped[Optional["Desistement"]] = relationship(
+        back_populates="demande_inscription",
+        uselist=False,
+    )
 
 
 class Desistement(Base):
     __tablename__ = "desistements"
-    __table_args__ = (UniqueConstraint("demande_inscription_id", name="uq_desistement_demande"),)
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    demande_inscription_id: Mapped[int] = mapped_column(ForeignKey("demandes_inscription.id"), nullable=False)
-    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    validated: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    validated_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    validated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    raison: Mapped[str] = mapped_column(String(191), nullable=False)
+    demande_inscription_id: Mapped[int] = mapped_column("demande_id", BigInteger, ForeignKey("demandes.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    demande_inscription: Mapped["DemandeInscription"] = relationship(back_populates="desistement")
-    validated_by: Mapped[Optional["User"]] = relationship(foreign_keys=[validated_by_user_id])
-
-
-class AppSetting(Base):
-    __tablename__ = "app_settings"
-
-    key: Mapped[str] = mapped_column(String(100), primary_key=True)
-    value: Mapped[str] = mapped_column(Text, nullable=False)
-
+    demande_inscription: Mapped["DemandeInscription"] = relationship(
+        back_populates="desistement",
+        foreign_keys=[demande_inscription_id],
+    )

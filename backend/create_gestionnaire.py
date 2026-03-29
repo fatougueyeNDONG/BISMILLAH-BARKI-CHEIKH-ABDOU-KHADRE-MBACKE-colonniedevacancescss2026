@@ -11,10 +11,10 @@ from app.security import hash_password
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Créer le premier SUPER_ADMIN (initialisation).")
-    parser.add_argument("--email", required=True, help="E-mail de contact (connexion admin + rappel)")
-    parser.add_argument("--password", required=True, help="Mot de passe du super admin (au moins 8 caractères)")
-    parser.add_argument("--name", default="SUPER_ADMIN", help="Nom affiché")
+    parser = argparse.ArgumentParser(description="Créer un compte GESTIONNAIRE (ligne de commande).")
+    parser.add_argument("--email", required=True, help="E-mail de contact (rappel / remember_token)")
+    parser.add_argument("--password", required=True, help="Mot de passe (au moins 8 caractères)")
+    parser.add_argument("--name", default="Gestionnaire", help="Nom affiché")
     parser.add_argument("--matricule", default=None, help="Matricule de connexion (défaut: partie locale de l’e-mail)")
     args = parser.parse_args()
 
@@ -23,12 +23,12 @@ def main() -> None:
 
     db = SessionLocal()
     try:
-        existing = db.execute(select(User).where(User.role == UserRole.SUPER_ADMIN)).scalars().first()
-        if existing:
-            raise SystemExit("Un SUPER_ADMIN existe déjà dans la base. Arrêt.")
+        existing_mat = db.execute(select(User).where(User.matricule == mat)).scalars().first()
+        if existing_mat:
+            raise SystemExit(f"Un utilisateur avec le matricule « {mat} » existe déjà (id={existing_mat.id}). Arrêt.")
 
         user = User(
-            role=UserRole.SUPER_ADMIN,
+            role=UserRole.GESTIONNAIRE,
             matricule=mat,
             password=hash_password(args.password),
             name=args.name,
@@ -37,7 +37,7 @@ def main() -> None:
         )
         db.add(user)
         db.commit()
-        print(f"SUPER_ADMIN créé: id={user.id}, matricule={user.matricule}, contact={token}")
+        print(f"GESTIONNAIRE créé: id={user.id}, matricule={user.matricule}, contact={token}")
     finally:
         db.close()
 

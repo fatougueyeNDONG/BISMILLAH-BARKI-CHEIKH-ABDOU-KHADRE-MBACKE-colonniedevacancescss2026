@@ -41,7 +41,8 @@ class ParentUserCreateIn(BaseModel):
     nom: str = Field(min_length=1, max_length=255)
     service: str = Field(min_length=1, max_length=255)
     site_code: Optional[str] = Field(default=None, min_length=1, max_length=50)
-    password: str = Field(min_length=8, max_length=255)
+    telephone: Optional[str] = Field(default=None, max_length=191)
+    password: Optional[str] = Field(default=None, max_length=255)
 
 
 class UserUpsertIn(BaseModel):

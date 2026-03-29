@@ -6,16 +6,17 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.enums import ListeCode, LienParente, UserRole
+from app.models.enums import UserRole
 from app.models.models import Parent, Service, Site, User
 from app.security import hash_password
+from app.services import admin_must_change_store
 
 
 def _get_or_create_service(db: Session, nom: str) -> Service:
     svc = db.query(Service).filter(Service.nom == nom).first()
     if svc:
         return svc
-    svc = Service(nom=nom, description=None)
+    svc = Service(nom=nom, description="-")
     db.add(svc)
     db.flush()
     return svc
@@ -28,12 +29,14 @@ def _get_or_create_site(db: Session, site_code: str) -> Optional[Site]:
     if not value:
         return None
 
-    # 1) Priorité au code exact
-    by_code = db.query(Site).filter(Site.code == value).first()
-    if by_code:
-        return by_code
+    try:
+        code_int = int(value)
+        by_code = db.query(Site).filter(Site.code == code_int).first()
+        if by_code:
+            return by_code
+    except ValueError:
+        pass
 
-    # 2) Sinon, on accepte aussi le nom exact (insensible à la casse)
     by_name = db.query(Site).filter(func.lower(Site.nom) == value.lower()).all()
     if len(by_name) == 1:
         return by_name[0]
@@ -43,11 +46,17 @@ def _get_or_create_site(db: Session, site_code: str) -> Optional[Site]:
             detail=f"Agence ambiguë '{value}' : plusieurs sites portent ce nom.",
         )
 
-    # 3) On ne crée jamais un site automatiquement ici pour éviter les doublons
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"Agence introuvable '{value}'. Utilisez un code ou un nom existant.",
     )
+
+
+def _stash_admin_email(email: str | None) -> str | None:
+    if not email:
+        return None
+    e = str(email).strip()
+    return e[:100] if e else None
 
 
 def create_user_superadmin(
@@ -62,24 +71,26 @@ def create_user_superadmin(
     must_change_password: bool = False,
 ) -> User:
     if role == UserRole.PARENT:
-        if not matricule or not email is None and email == "":
-            pass
-        # Construit Parent à partir du payload dédié
         if not parent_payload:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payload parent requis.")
+        if not matricule:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Matricule parent requis.")
         prenom = parent_payload["prenom"]
         nom_parent = parent_payload["nom"]
         service_nom = parent_payload["service"]
         site_code = parent_payload.get("site_code")
+        telephone = parent_payload.get("telephone") or "-"
+        nin = parent_payload.get("nin") or "-"
+        genre = parent_payload.get("genre") or "-"
+        adresse = parent_payload.get("adresse") or "-"
 
         user = User(
             role=role,
             name=name,
-            email=email,
             matricule=matricule,
-            password_hash=hash_password(password),
+            password=hash_password(password),
             is_active=True,
-            must_change_password=must_change_password,
+            remember_token=None,
         )
         db.add(user)
         db.flush()
@@ -90,12 +101,14 @@ def create_user_superadmin(
             prenom=prenom,
             nom=nom_parent,
             matricule=matricule,
-            email=email,
-            telephone=None,
-            genre=None,
-            nin=None,
-            adresse=None,
-            service_id=service.id if service else None,
+            email=str(email).strip() if email else None,
+            telephone=telephone,
+            genre=genre,
+            nin=nin,
+            adresse=adresse,
+            service_text=service.nom,
+            site_text=site.nom if site else "",
+            service_id=service.id,
             site_id=site.id if site else None,
             user_id=user.id,
         )
@@ -103,21 +116,23 @@ def create_user_superadmin(
         db.flush()
         return user
 
-    # Gestionnaire / Super admin : on ne crée pas un profil Parent
     if role in {UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN}:
         if not email:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="email requis pour ce rôle.")
+        if not matricule:
+            matricule = str(email).split("@")[0][:191]
         user = User(
             role=role,
             name=name,
-            email=email,
             matricule=matricule,
-            password_hash=hash_password(password),
+            password=hash_password(password),
             is_active=True,
-            must_change_password=must_change_password,
+            remember_token=_stash_admin_email(email),
         )
         db.add(user)
         db.flush()
+        if must_change_password:
+            admin_must_change_store.set_flag(user.id, True)
         return user
 
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Rôle non supporté.")
@@ -141,6 +156,7 @@ def delete_admin_user(db: Session, *, user_id: int, requester_id: int) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Suppression autorisee uniquement pour les administrateurs.")
     if user.id == requester_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vous ne pouvez pas supprimer votre propre compte.")
+    admin_must_change_store.clear_flag(user_id)
     db.delete(user)
     db.flush()
 
@@ -196,13 +212,14 @@ def update_user(
     if is_active is not None:
         user.is_active = is_active
     if email is not None:
-        user.email = email
+        if user.role in {UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN}:
+            user.remember_token = _stash_admin_email(str(email) if email else None)
+        # parent: email va aussi sur le profil parent ci-dessous
     if role is not None:
         if role not in {UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN}:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Rôle invalide pour un administrateur.")
         user.role = role
 
-    # Parent profile updates (super admin screen)
     if user.role == UserRole.PARENT and user.parent_profile is not None:
         parent = user.parent_profile
         if parent_prenom is not None:
@@ -214,12 +231,13 @@ def update_user(
         if parent_service is not None:
             service = _get_or_create_service(db, parent_service)
             parent.service_id = service.id
+            parent.service_text = service.nom
         if parent_site_code is not None:
             site = _get_or_create_site(db, parent_site_code)
             parent.site_id = site.id if site else None
-        # Keep parent email aligned with user email when provided.
+            parent.site_text = site.nom if site else ""
         if email is not None:
-            parent.email = email
+            parent.email = str(email).strip() if email else None
         db.add(parent)
     db.flush()
     return user
@@ -229,8 +247,8 @@ def change_password_for_user(db: Session, *, user_id: int, new_password: str) ->
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable.")
-    user.password_hash = hash_password(new_password)
-    user.must_change_password = False
+    user.password = hash_password(new_password)
+    admin_must_change_store.clear_flag(user_id)
     db.flush()
 
 
@@ -240,8 +258,8 @@ def set_admin_temp_password(db: Session, *, user_id: int, temp_password: str) ->
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable.")
     if user.role not in {UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Réinitialisation automatique réservée aux administrateurs.")
-    user.password_hash = hash_password(temp_password)
-    user.must_change_password = True
+    user.password = hash_password(temp_password)
+    admin_must_change_store.set_flag(user_id, True)
     db.flush()
     return user
 
@@ -249,9 +267,8 @@ def set_admin_temp_password(db: Session, *, user_id: int, temp_password: str) ->
 def change_password_self(db: Session, *, user: User, old_password: str, new_password: str) -> None:
     from app.security import verify_password
 
-    if not verify_password(old_password, user.password_hash):
+    if not verify_password(old_password, user.password):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mot de passe actuel incorrect.")
-    user.password_hash = hash_password(new_password)
-    user.must_change_password = False
+    user.password = hash_password(new_password)
+    admin_must_change_store.clear_flag(user.id)
     db.flush()
-

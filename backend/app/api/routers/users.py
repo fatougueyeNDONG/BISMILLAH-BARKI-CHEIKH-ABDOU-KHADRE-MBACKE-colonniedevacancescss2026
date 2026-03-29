@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from typing import Any
 import secrets
 import string
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.enums import UserRole
-from app.models.models import Parent, User
+from app.models.models import User
 from app.schemas.users import (
     AdminUserCreateIn,
     ParentUserCreateIn,
@@ -18,21 +19,15 @@ from app.schemas.users import (
     UserOut,
     UserUpsertIn,
 )
+from app.services.email import send_email
 from app.services.users import (
     change_password_for_user,
-    change_password_self,
     create_user_superadmin,
-    delete_admin_user,
     delete_user_by_super_admin,
     set_admin_temp_password,
     set_user_active,
     update_user,
 )
-from app.schemas.auth import ChangePasswordIn
-from app.security import verify_password
-from app.models.models import Service  # noqa: F401
-from pydantic import ValidationError
-from app.services.email import send_email
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users"])
 DEFAULT_PARENT_PASSWORD = "Passer123"
@@ -43,39 +38,47 @@ def _generate_temp_password(length: int = 12) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
+def _admin_contact_email(u: User) -> str | None:
+    t = u.remember_token
+    if t and "@" in t:
+        return t
+    return None
+
+
+def build_user_out(u: User) -> UserOut:
+    email = _admin_contact_email(u)
+    parent_prenom = parent_nom = parent_service = parent_site_code = parent_telephone = None
+    if u.role == UserRole.PARENT and u.parent_profile:
+        pp = u.parent_profile
+        parent_prenom = pp.prenom
+        parent_nom = pp.nom
+        parent_service = pp.service_text
+        parent_telephone = pp.telephone
+        parent_site_code = str(pp.site_obj.code) if pp.site_obj else (pp.site_text or None)
+        email = pp.email or email
+    return UserOut(
+        id=u.id,
+        name=u.name,
+        role=u.role,
+        is_active=u.is_active,
+        email=email,
+        matricule=u.matricule,
+        parent_prenom=parent_prenom,
+        parent_nom=parent_nom,
+        parent_service=parent_service,
+        parent_site_code=parent_site_code,
+        parent_telephone=parent_telephone,
+    )
+
+
 @router.get("", response_model=list[UserOut])
 def list_users(
     db: Session = Depends(get_db),
     admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
-    users = (
-        db.query(User)
-        .order_by(User.id.asc())
-        .all()
-    )
-    out: list[UserOut] = []
-    for u in users:
-        payload = {
-            "id": u.id,
-            "name": u.name,
-            "role": u.role,
-            "is_active": u.is_active,
-            "email": u.email,
-            "matricule": u.matricule,
-            "parent_prenom": None,
-            "parent_nom": None,
-            "parent_service": None,
-            "parent_site_code": None,
-            "parent_telephone": None,
-        }
-        if u.role == UserRole.PARENT and u.parent_profile:
-            payload["parent_prenom"] = u.parent_profile.prenom
-            payload["parent_nom"] = u.parent_profile.nom
-            payload["parent_service"] = u.parent_profile.service.nom if u.parent_profile.service else None
-            payload["parent_site_code"] = u.parent_profile.site.code if u.parent_profile.site else None
-            payload["parent_telephone"] = u.parent_profile.telephone
-        out.append(UserOut.model_validate(payload))
-    return out
+    _ = db, admin
+    users = db.query(User).order_by(User.id.asc()).all()
+    return [build_user_out(u) for u in users]
 
 
 @router.post("", response_model=UserOut)
@@ -84,17 +87,16 @@ def create_user(
     db: Session = Depends(get_db),
     admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
+    _ = admin
     role = payload.get("role")
     if not role:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role requis")
 
-    # Front peut envoyer role en string (ex: "PARENT"). On normalise en enum.
     try:
         role_enum = UserRole(role) if isinstance(role, str) else role
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role invalide") from e
 
-    # Parent
     if role_enum == UserRole.PARENT:
         try:
             p = ParentUserCreateIn.model_validate(payload)
@@ -108,12 +110,19 @@ def create_user(
             password=DEFAULT_PARENT_PASSWORD,
             email=str(p.email) if p.email else None,
             matricule=p.matricule,
-            parent_payload={"prenom": p.prenom, "nom": p.nom, "service": p.service, "site_code": p.site_code},
+            parent_payload={
+                "prenom": p.prenom,
+                "nom": p.nom,
+                "service": p.service,
+                "site_code": p.site_code,
+                "telephone": p.telephone,
+            },
             must_change_password=True,
         )
-        return UserOut.model_validate(user)
+        db.commit()
+        db.refresh(user)
+        return build_user_out(user)
 
-    # Admin / gestionnaire / super admin (super admin aussi)
     try:
         a = AdminUserCreateIn.model_validate(payload)
     except ValidationError as e:
@@ -130,31 +139,37 @@ def create_user(
         parent_payload=None,
         must_change_password=True,
     )
-    if user.email:
+    db.commit()
+    db.refresh(user)
+    contact = _admin_contact_email(user)
+    if contact:
         send_email(
-            to=[user.email],
+            to=[contact],
             subject="Colonie 2026 — Vos identifiants temporaires",
             body=(
                 "Bonjour,\n\n"
                 f"Votre compte administrateur a été créé.\n"
-                f"- Email: {user.email}\n"
+                f"- Email: {contact}\n"
+                f"- Matricule: {user.matricule}\n"
                 f"- Mot de passe temporaire: {temp_password}\n\n"
-                "Veuillez cliquer ici pour vous connecter: http://localhost:8080\n\n"
+                "Vous pouvez vous connecter avec votre e-mail (ou matricule) et ce mot de passe: "
+                "http://localhost:8080\n\n"
                 "À la première connexion, vous serez obligé de changer ce mot de passe.\n"
                 "Cordialement.\n"
             ),
             html_body=(
                 "<p>Bonjour,</p>"
                 f"<p>Votre compte administrateur a été créé.<br>"
-                f"- Email: {user.email}<br>"
+                f"- Email: {contact}<br>"
+                f"- Matricule: {user.matricule}<br>"
                 f"- Mot de passe temporaire: {temp_password}</p>"
-                '<p>Veuillez vous connecter à l\'application en cliquant sur ce lien : '
+                '<p>Veuillez vous connecter à l\'application : '
                 '<a href="http://localhost:8080/?force_login=1">Accéder à l\'application</a>.</p>'
                 "<p>À la première connexion, vous serez obligé de changer ce mot de passe.<br>"
                 "Cordialement.</p>"
             ),
         )
-    return UserOut.model_validate(user)
+    return build_user_out(user)
 
 
 @router.patch("/{user_id}", response_model=UserOut)
@@ -164,6 +179,7 @@ def upsert_user(
     db: Session = Depends(get_db),
     admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
+    _ = admin
     user = update_user(
         db,
         user_id=user_id,
@@ -179,7 +195,7 @@ def upsert_user(
     )
     db.commit()
     db.refresh(user)
-    return UserOut.model_validate(user)
+    return build_user_out(user)
 
 
 @router.post("/{user_id}/deactivate")
@@ -188,6 +204,7 @@ def deactivate_user(
     db: Session = Depends(get_db),
     admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
+    _ = admin
     set_user_active(db, user_id=user_id, is_active=False)
     db.commit()
     return {"ok": True}
@@ -211,6 +228,7 @@ def reset_password_user(
     db: Session = Depends(get_db),
     admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
+    _ = admin
     change_password_for_user(db, user_id=user_id, new_password=payload.new_password)
     db.commit()
     return {"ok": True}
@@ -222,39 +240,33 @@ def reset_password_user_auto(
     db: Session = Depends(get_db),
     admin: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
+    _ = admin
     temp_password = _generate_temp_password()
     user = set_admin_temp_password(db, user_id=user_id, temp_password=temp_password)
     db.commit()
-
-    if user.email:
+    db.refresh(user)
+    contact = _admin_contact_email(user)
+    if contact:
         send_email(
-            to=[user.email],
+            to=[contact],
             subject="Colonie 2026 — Réinitialisation de votre mot de passe",
             body=(
                 "Bonjour,\n\n"
                 "Votre mot de passe administrateur a été réinitialisé.\n"
-                f"- Email: {user.email}\n"
+                f"- Email: {contact}\n"
                 f"- Mot de passe temporaire: {temp_password}\n\n"
-                "Veuillez vous connecter à l'application en cliquant sur ce lien : Accéder à l'application.\n\n"
+                "Connexion: http://localhost:8080\n\n"
                 "À la prochaine connexion, vous serez obligé de changer ce mot de passe.\n"
                 "Cordialement.\n"
             ),
             html_body=(
                 "<p>Bonjour,</p>"
                 "<p>Votre mot de passe administrateur a été réinitialisé.<br>"
-                f"- Email: {user.email}<br>"
+                f"- Email: {contact}<br>"
                 f"- Mot de passe temporaire: {temp_password}</p>"
-                '<p>Veuillez vous connecter à l\'application en cliquant sur ce lien : '
-                '<a href="http://localhost:8080/?force_login=1">Accéder à l\'application</a>.</p>'
+                '<p><a href="http://localhost:8080/?force_login=1">Accéder à l\'application</a>.</p>'
                 "<p>À la prochaine connexion, vous serez obligé de changer ce mot de passe.<br>"
                 "Cordialement.</p>"
             ),
         )
     return {"ok": True}
-
-
-"""
-L’endpoint de changement de mot de passe “changer mon mot de passe” est exposé
-dans `app/api/routers/auth.py` via `POST /auth/change-password`.
-"""
-

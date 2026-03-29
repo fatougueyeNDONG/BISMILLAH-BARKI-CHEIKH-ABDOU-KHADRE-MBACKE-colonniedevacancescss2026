@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
 from app.db.session import get_db
-from app.models.enums import UserRole
+from app.models.enums import DemandeStatut, UserRole
 from app.models.models import DemandeInscription, Enfant, Parent, User
 from app.schemas.inscriptions import (
     DemandeOut,
@@ -23,6 +23,7 @@ from app.services.inscriptions import (
     set_titulaire,
 )
 from app.services.email import send_email, uniq_emails
+from app.services.notify_helpers import collect_admin_emails
 from app.services.email_templates import (
     body_desistement_requested,
     body_inscription,
@@ -61,10 +62,7 @@ def creer_inscription(
 
     parent = db.query(Parent).filter(Parent.user_id == user.id).first()
     parent_email = parent.email if parent else None
-    admins = db.query(User).filter(User.is_active.is_(True), User.email.isnot(None)).filter(
-        User.role.in_([UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN])
-    )
-    admin_emails = [u.email for u in admins.all() if u.email]
+    admin_emails = collect_admin_emails(db)
 
     subject = subject_inscription(payload.parent.matricule, f"{payload.enfant.prenom} {payload.enfant.nom}")
     body = body_inscription(
@@ -121,11 +119,8 @@ def definir_titulaire(
     db.commit()
 
     if parent and new:
-        admins = db.query(User).filter(User.is_active.is_(True), User.email.isnot(None)).filter(
-            User.role.in_([UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN])
-        )
-        admin_emails = [u.email for u in admins.all() if u.email]
-        to = uniq_emails([parent.email] + admin_emails)
+        admin_emails = collect_admin_emails(db)
+        to = uniq_emails(([parent.email] if parent.email else []) + admin_emails)
         background.add_task(
             send_email,
             to=to,
@@ -159,11 +154,8 @@ def demander_desistement(
     db.commit()
 
     if parent and enfant_label:
-        admins = db.query(User).filter(User.is_active.is_(True), User.email.isnot(None)).filter(
-            User.role.in_([UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN])
-        )
-        admin_emails = [u.email for u in admins.all() if u.email]
-        to = uniq_emails([parent.email] + admin_emails)
+        admin_emails = collect_admin_emails(db)
+        to = uniq_emails(([parent.email] if parent.email else []) + admin_emails)
         now = datetime.now(timezone.utc)
         background.add_task(
             send_email,
@@ -203,14 +195,19 @@ def _to_demande_out(db: Session, demande: DemandeInscription) -> DemandeOut:
     db.refresh(demande)
     enfant = demande.enfant
     liste = demande.liste
+    d_ins = demande.date_inscription
+    if isinstance(d_ins, datetime):
+        when = d_ins
+    else:
+        when = datetime.combine(d_ins, datetime.min.time(), tzinfo=timezone.utc)
     return DemandeOut(
         id=demande.id,
         liste_code=liste.code.value,
         rang_dans_liste=demande.rang_dans_liste,
-        date_inscription=demande.date_inscription,
+        date_inscription=when,
         statut=demande.statut.value,
-        non_validation_reason=demande.non_validation_reason,
-        is_selection_finale=demande.is_selection_finale,
+        non_validation_reason=demande.non_validation_reason or None,
+        is_selection_finale=(demande.statut == DemandeStatut.RETENUE),
         enfant_id=enfant.id,
         enfant_prenom=enfant.prenom,
         enfant_nom=enfant.nom,

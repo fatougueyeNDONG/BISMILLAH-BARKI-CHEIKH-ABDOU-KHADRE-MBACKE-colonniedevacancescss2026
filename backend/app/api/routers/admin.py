@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -12,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.enums import DemandeStatut, ListeCode, UserRole
-from app.models.models import AppSetting, DemandeInscription, Desistement, Enfant, Liste, Parent, Site, User
+from app.models.models import DemandeInscription, Desistement, Enfant, Liste, Parent, Site, User
 from app.services.email import send_email, uniq_emails
 from app.services.email_templates import (
     body_desistement_validated,
@@ -22,9 +21,10 @@ from app.services.email_templates import (
     subject_transfer,
 )
 from app.services.inscriptions import ensure_listes_exist
+from app.services.notify_helpers import collect_admin_emails
+from app.services.runtime_settings_store import merge_with_defaults, write_settings
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-SETTINGS_KEY = "runtime_settings"
 
 
 class RuntimeSettingsIn(BaseModel):
@@ -38,23 +38,6 @@ class RuntimeSettingsIn(BaseModel):
     ageMin: int = Field(default=2012)
     ageMax: int = Field(default=2019)
     inscriptionsOuvertes: bool = Field(default=True)
-
-
-def _default_runtime_settings() -> dict:
-    return RuntimeSettingsIn().model_dump()
-
-
-def _read_runtime_settings(db: Session) -> dict:
-    rec = db.query(AppSetting).filter(AppSetting.key == SETTINGS_KEY).first()
-    if not rec:
-        return _default_runtime_settings()
-    try:
-        raw = json.loads(rec.value)
-        if not isinstance(raw, dict):
-            return _default_runtime_settings()
-        return {**_default_runtime_settings(), **raw}
-    except Exception:
-        return _default_runtime_settings()
 
 
 class FinalSelectionIn(BaseModel):
@@ -87,12 +70,21 @@ class SiteConfigIn(BaseModel):
     description: str | None = None
 
 
+def _default_runtime_settings() -> dict:
+    return RuntimeSettingsIn().model_dump()
+
+
+def _read_runtime_settings() -> dict:
+    return merge_with_defaults(_default_runtime_settings())
+
+
 @router.get("/settings")
 def get_runtime_settings(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return _read_runtime_settings(db)
+    _ = db, user
+    return _read_runtime_settings()
 
 
 @router.put("/settings")
@@ -101,14 +93,9 @@ def update_runtime_settings(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
-    rec = db.query(AppSetting).filter(AppSetting.key == SETTINGS_KEY).first()
+    _ = db, user
     data = payload.model_dump()
-    if rec is None:
-        rec = AppSetting(key=SETTINGS_KEY, value=json.dumps(data))
-        db.add(rec)
-    else:
-        rec.value = json.dumps(data)
-    db.commit()
+    write_settings({**_default_runtime_settings(), **data})
     return data
 
 
@@ -117,6 +104,7 @@ def list_sites(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _ = user
     all_sites = db.query(Site).order_by(Site.nom.asc()).all()
     return [
         {
@@ -129,17 +117,26 @@ def list_sites(
     ]
 
 
+def _parse_site_code(code_raw: str) -> int:
+    try:
+        return int(str(code_raw).strip())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Code site doit être un entier.")
+
+
 @router.post("/sites")
 def create_site(
     payload: SiteConfigIn,
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
-    code = payload.code.strip().upper()
-    exists = db.query(Site).filter(Site.code == code).first()
+    _ = user
+    code_int = _parse_site_code(payload.code)
+    exists = db.query(Site).filter(Site.code == code_int).first()
     if exists:
         raise HTTPException(status_code=400, detail="Ce code de site existe déjà.")
-    row = Site(nom=payload.nom.strip(), code=code, description=payload.description)
+    desc = (payload.description or "").strip() or "-"
+    row = Site(nom=payload.nom.strip(), code=code_int, description=desc)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -153,16 +150,17 @@ def update_site(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
+    _ = user
     row = db.query(Site).filter(Site.id == site_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Site introuvable.")
-    code = payload.code.strip().upper()
-    duplicate = db.query(Site).filter(Site.code == code, Site.id != site_id).first()
+    code_int = _parse_site_code(payload.code)
+    duplicate = db.query(Site).filter(Site.code == code_int, Site.id != site_id).first()
     if duplicate:
         raise HTTPException(status_code=400, detail="Ce code de site existe déjà.")
     row.nom = payload.nom.strip()
-    row.code = code
-    row.description = payload.description
+    row.code = code_int
+    row.description = (payload.description or "").strip() or "-"
     db.commit()
     db.refresh(row)
     return {"id": row.id, "nom": row.nom, "code": row.code, "description": row.description}
@@ -174,6 +172,7 @@ def delete_site(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
+    _ = user
     row = db.query(Site).filter(Site.id == site_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Site introuvable.")
@@ -190,6 +189,7 @@ def list_listes_config(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _ = user
     rows = db.query(Liste).order_by(Liste.code.asc()).all()
     return [
         {
@@ -197,6 +197,7 @@ def list_listes_config(
             "code": l.code.value,
             "nom": l.nom,
             "description": l.description,
+            "nombre_max": l.nombre_max,
         }
         for l in rows
     ]
@@ -208,10 +209,12 @@ def create_liste_config(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
+    _ = user
     exists = db.query(Liste).filter(Liste.code == payload.code).first()
     if exists:
         raise HTTPException(status_code=400, detail="Ce code de liste existe déjà.")
-    row = Liste(code=payload.code, nom=payload.nom, description=payload.description)
+    desc = (payload.description or "").strip() or "-"
+    row = Liste(code=payload.code, nom=payload.nom, description=desc, nombre_max=999)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -225,6 +228,7 @@ def update_liste_config(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
+    _ = user
     row = db.query(Liste).filter(Liste.id == liste_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Liste introuvable.")
@@ -233,7 +237,7 @@ def update_liste_config(
         raise HTTPException(status_code=400, detail="Ce code de liste existe déjà.")
     row.code = payload.code
     row.nom = payload.nom
-    row.description = payload.description
+    row.description = (payload.description or "").strip() or "-"
     db.commit()
     db.refresh(row)
     return {"id": row.id, "code": row.code.value, "nom": row.nom, "description": row.description}
@@ -245,6 +249,7 @@ def delete_liste_config(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
 ):
+    _ = user
     row = db.query(Liste).filter(Liste.id == liste_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Liste introuvable.")
@@ -262,6 +267,7 @@ def list_demandes_par_liste(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN)),
 ):
+    _ = user
     ensure_listes_exist(db)
     liste = db.query(Liste).filter(Liste.code == liste_code).first()
     if not liste:
@@ -277,14 +283,15 @@ def list_demandes_par_liste(
     def _row(d: DemandeInscription):
         e = d.enfant
         p = e.parent
+        sel = d.statut == DemandeStatut.RETENUE
         return {
             "demande_id": d.id,
             "liste": liste.code.value,
             "rang": d.rang_dans_liste,
             "date_inscription": d.date_inscription,
             "statut": d.statut.value,
-            "non_validation_reason": d.non_validation_reason,
-            "selection_finale": d.is_selection_finale,
+            "non_validation_reason": d.non_validation_reason or None,
+            "selection_finale": sel,
             "parent_matricule": p.matricule,
             "enfant": {
                 "id": e.id,
@@ -318,26 +325,22 @@ def set_selection_finale(
             detail="Le motif est obligatoire quand l'action est NON (non validée).",
         )
 
-    demande.is_selection_finale = payload.is_selection_finale
-    demande.selected_by_user_id = user.id
-    demande.selected_at = datetime.now(timezone.utc)
+    when = datetime.now(timezone.utc)
     if payload.is_selection_finale:
         demande.statut = DemandeStatut.RETENUE
-        demande.non_validation_reason = None
+        demande.non_validation_reason = ""
     else:
         demande.statut = DemandeStatut.NON_VALIDEE
-        demande.non_validation_reason = payload.non_validation_reason.strip() if payload.non_validation_reason else None
+        demande.non_validation_reason = (payload.non_validation_reason or "").strip()[:191] or ""
+    demande.updated_at = when
+
     db.commit()
 
-    # Emails (parent + admins)
     enfant = demande.enfant
     parent = enfant.parent
     parent_email = parent.email
-    admins = db.query(User).filter(User.is_active.is_(True), User.email.isnot(None)).filter(
-        User.role.in_([UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN])
-    )
-    admin_emails = [u.email for u in admins.all() if u.email]
-    to = uniq_emails([parent_email] + admin_emails)
+    admin_emails = collect_admin_emails(db)
+    to = uniq_emails(([parent_email] if parent_email else []) + admin_emails)
     background.add_task(
         send_email,
         to=to,
@@ -346,7 +349,7 @@ def set_selection_finale(
             parent_matricule=parent.matricule,
             enfant=f"{enfant.prenom} {enfant.nom}",
             selected=payload.is_selection_finale,
-            when=demande.selected_at or datetime.now(timezone.utc),
+            when=when,
         ),
     )
     return {"ok": True}
@@ -377,7 +380,6 @@ def transferer_demande(
     if not to_liste:
         raise HTTPException(status_code=404, detail="Liste cible introuvable.")
 
-    # Transfert: on attribue un nouveau rang à la fin de la liste cible
     from_liste = demande.liste
     from_rang = demande.rang_dans_liste
     new_rang = _next_rang_for_liste(db, to_liste.id)
@@ -387,11 +389,8 @@ def transferer_demande(
 
     enfant = demande.enfant
     parent = enfant.parent
-    admins = db.query(User).filter(User.is_active.is_(True), User.email.isnot(None)).filter(
-        User.role.in_([UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN])
-    )
-    admin_emails = [u.email for u in admins.all() if u.email]
-    to = uniq_emails([parent.email] + admin_emails)
+    admin_emails = collect_admin_emails(db)
+    to = uniq_emails(([parent.email] if parent.email else []) + admin_emails)
     when = datetime.now(timezone.utc)
     background.add_task(
         send_email,
@@ -416,6 +415,7 @@ def stats_summary(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN)),
 ):
+    _ = user
     ensure_listes_exist(db)
 
     total_users = db.query(func.count(User.id)).scalar() or 0
@@ -423,22 +423,22 @@ def stats_summary(
     total_enfants = db.query(func.count(Enfant.id)).scalar() or 0
     total_demandes = db.query(func.count(DemandeInscription.id)).scalar() or 0
 
-    selected_total = db.query(func.count(DemandeInscription.id)).filter(DemandeInscription.is_selection_finale.is_(True)).scalar() or 0
+    selected_total = (
+        db.query(func.count(DemandeInscription.id))
+        .filter(DemandeInscription.statut == DemandeStatut.RETENUE)
+        .scalar()
+        or 0
+    )
 
     by_liste = (
         db.query(Liste.code, func.count(DemandeInscription.id))
-        .filter(DemandeInscription.is_selection_finale.is_(True))
+        .filter(DemandeInscription.statut == DemandeStatut.RETENUE)
         .group_by(Liste.code)
         .all()
     )
     by_liste_map = {code.value: int(cnt) for code, cnt in by_liste}
 
-    desistements_waiting = (
-        db.query(func.count(Desistement.id))
-        .filter(Desistement.validated.is_(False))
-        .scalar()
-        or 0
-    )
+    desistements_waiting = db.query(func.count(Desistement.id)).scalar() or 0
 
     return {
         "total_users": int(total_users),
@@ -458,7 +458,7 @@ def swap_rang(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN)),
 ):
-    # Un échange de rang se fait uniquement à l’intérieur d’une même liste.
+    _ = user
     d1 = db.query(DemandeInscription).filter(DemandeInscription.id == demande_id).first()
     d2 = db.query(DemandeInscription).filter(DemandeInscription.id == payload.other_demande_id).first()
     if not d1 or not d2:
@@ -470,7 +470,6 @@ def swap_rang(
     rang1 = d1.rang_dans_liste
     rang2 = d2.rang_dans_liste
 
-    # Sécurité contre la contrainte UNIQUE(liste_id, rang) pendant le swap.
     d1.rang_dans_liste = -999999
     db.flush()
     d2.rang_dans_liste = rang1
@@ -480,12 +479,19 @@ def swap_rang(
     return {"ok": True, "liste_id": d1.liste_id, "rang1": d2.rang_dans_liste, "rang2": d1.rang_dans_liste}
 
 
+def _selection_event_time(d: DemandeInscription) -> datetime | None:
+    if d.updated_at:
+        return d.updated_at if d.updated_at.tzinfo else d.updated_at.replace(tzinfo=timezone.utc)
+    return datetime.combine(d.date_inscription, datetime.min.time(), tzinfo=timezone.utc)
+
+
 @router.get("/historique", summary="Historique consolidé (gestionnaire / super admin)")
 def historique_actions(
     limit: int = 200,
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN)),
 ):
+    _ = user
     safe_limit = max(1, min(limit, 500))
 
     events: list[dict] = []
@@ -525,7 +531,7 @@ def historique_actions(
 
         _push_event(
             key=f"inscription_{d.id}",
-            when=d.date_inscription,
+            when=datetime.combine(d.date_inscription, datetime.min.time(), tzinfo=timezone.utc),
             utilisateur=parent.matricule,
             role_label="Parent",
             action="Inscription",
@@ -533,8 +539,8 @@ def historique_actions(
             cible=cible,
         )
 
-        if d.selected_at is not None and d.selected_by is not None:
-            selected_by = d.selected_by.email or f"admin#{d.selected_by.id}"
+        if d.statut in (DemandeStatut.RETENUE, DemandeStatut.NON_VALIDEE):
+            st = _selection_event_time(d)
             if d.statut == DemandeStatut.NON_VALIDEE:
                 reason = f" Motif : {d.non_validation_reason}" if d.non_validation_reason else ""
                 detail = f"Demande refusée pour {cible}.{reason}"
@@ -544,8 +550,8 @@ def historique_actions(
                 action = "Validation"
             _push_event(
                 key=f"selection_{d.id}",
-                when=d.selected_at,
-                utilisateur=selected_by,
+                when=st,
+                utilisateur="Administrateur",
                 role_label="Admin",
                 action=action,
                 details=detail,
@@ -557,7 +563,7 @@ def historique_actions(
         .join(DemandeInscription, DemandeInscription.id == Desistement.demande_inscription_id)
         .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
         .join(Parent, Parent.id == Enfant.parent_id)
-        .order_by(Desistement.requested_at.desc())
+        .order_by(Desistement.created_at.desc())
         .limit(safe_limit)
         .all()
     )
@@ -567,28 +573,19 @@ def historique_actions(
         enfant = demande.enfant
         parent = enfant.parent
         cible = f"{enfant.prenom} {enfant.nom}"
+        when_ds = d.created_at
+        if when_ds and when_ds.tzinfo is None:
+            when_ds = when_ds.replace(tzinfo=timezone.utc)
 
         _push_event(
             key=f"desist_req_{d.id}",
-            when=d.requested_at,
+            when=when_ds,
             utilisateur=parent.matricule,
             role_label="Parent",
             action="Désistement demandé",
             details=f"Désistement demandé pour {cible}.",
             cible=cible,
         )
-
-        if d.validated and d.validated_at is not None and d.validated_by is not None:
-            validated_by = d.validated_by.email or f"admin#{d.validated_by.id}"
-            _push_event(
-                key=f"desist_val_{d.id}",
-                when=d.validated_at,
-                utilisateur=validated_by,
-                role_label="Admin",
-                action="Désistement validé",
-                details=f"Désistement validé pour {cible}.",
-                cible=cible,
-            )
 
     events.sort(key=lambda e: e["timestamp"], reverse=True)
     trimmed = events[:safe_limit]
@@ -602,11 +599,11 @@ def desistements_en_attente(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN)),
 ):
+    _ = user
     desistements = (
         db.query(Desistement)
         .join(DemandeInscription, DemandeInscription.id == Desistement.demande_inscription_id)
-        .filter(Desistement.validated.is_(False))
-        .order_by(Desistement.requested_at.asc())
+        .order_by(Desistement.created_at.asc())
         .all()
     )
 
@@ -618,8 +615,8 @@ def desistements_en_attente(
         out.append(
             {
                 "desistement_id": d.id,
-                "requested_at": d.requested_at,
-                "reason": d.reason,
+                "requested_at": d.created_at,
+                "reason": d.raison,
                 "demande_id": demande.id,
                 "parent_matricule": parent.matricule,
                 "enfant": {"id": enfant.id, "prenom": enfant.prenom, "nom": enfant.nom},
@@ -639,42 +636,30 @@ def valider_desistement(
     d = db.query(Desistement).filter(Desistement.id == desistement_id).first()
     if not d:
         raise HTTPException(status_code=404, detail="Désistement introuvable.")
-    if d.validated:
+
+    if not payload.validated:
         return {"ok": True}
 
-    if payload.validated:
-        d.validated = True
-        d.validated_by_user_id = user.id
-        d.validated_at = datetime.now(timezone.utc)
+    demande = d.demande_inscription
+    enfant = demande.enfant
+    parent = enfant.parent
 
-        demande = db.query(DemandeInscription).filter(DemandeInscription.id == d.demande_inscription_id).first()
-        if demande:
-            demande.is_selection_finale = False
-            demande.selected_by_user_id = user.id
-            demande.selected_at = datetime.now(timezone.utc)
-            demande.statut = DemandeStatut.DESISTEE
-
+    demande.statut = DemandeStatut.DESISTEE
+    demande.updated_at = datetime.now(timezone.utc)
+    validated_at = datetime.now(timezone.utc)
+    db.delete(d)
     db.commit()
 
-    # Email parent + admins (si validation)
-    if payload.validated:
-        demande = d.demande_inscription
-        enfant = demande.enfant
-        parent = enfant.parent
-        admins = db.query(User).filter(User.is_active.is_(True), User.email.isnot(None)).filter(
-            User.role.in_([UserRole.GESTIONNAIRE, UserRole.SUPER_ADMIN])
-        )
-        admin_emails = [u.email for u in admins.all() if u.email]
-        to = uniq_emails([parent.email] + admin_emails)
-        background.add_task(
-            send_email,
-            to=to,
-            subject=f"Colonie 2026 — Désistement validé ({parent.matricule}) — {enfant.nom}",
-            body=body_desistement_validated(
-                parent_matricule=parent.matricule,
-                enfant=f"{enfant.prenom} {enfant.nom}",
-                when=d.validated_at or datetime.now(timezone.utc),
-            ),
-        )
+    admin_emails = collect_admin_emails(db)
+    to = uniq_emails(([parent.email] if parent.email else []) + admin_emails)
+    background.add_task(
+        send_email,
+        to=to,
+        subject=f"Colonie 2026 — Désistement validé ({parent.matricule}) — {enfant.nom}",
+        body=body_desistement_validated(
+            parent_matricule=parent.matricule,
+            enfant=f"{enfant.prenom} {enfant.nom}",
+            when=validated_at,
+        ),
+    )
     return {"ok": True}
-

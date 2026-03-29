@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import date, datetime, timezone
 
 from fastapi import HTTPException, status
@@ -8,9 +7,9 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.models.enums import DemandeStatut, LienParente, ListeCode
-from app.models.models import AppSetting, DemandeInscription, Enfant, Liste, Parent, Service, User
+from app.models.models import DemandeInscription, Enfant, Liste, Parent, Service, User
+from app.services.runtime_settings_store import get_max_enfants_par_parent
 
-SETTINGS_KEY = "runtime_settings"
 DEFAULT_MAX_ENFANTS_PAR_PARENT = 2
 
 
@@ -27,7 +26,7 @@ def _get_or_create_service(db: Session, nom: str) -> Service:
     svc = db.query(Service).filter(Service.nom == nom).first()
     if svc:
         return svc
-    svc = Service(nom=nom, description=None)
+    svc = Service(nom=nom, description="-")
     db.add(svc)
     db.flush()
     return svc
@@ -35,19 +34,18 @@ def _get_or_create_service(db: Session, nom: str) -> Service:
 
 def ensure_listes_exist(db: Session) -> None:
     wanted = {
-        ListeCode.PRINCIPALE: ("Liste principale", "Enfants titulaires (premiers enfants)."),
-        ListeCode.ATTENTE_N1: ("Liste d’attente N°1", "Deuxièmes enfants (lien ≠ Autre)."),
-        ListeCode.ATTENTE_N2: ("Liste d’attente N°2", "Deuxièmes enfants (lien = Autre)."),
+        ListeCode.PRINCIPALE: ("Liste principale", "Enfants titulaires (premiers enfants).", 999),
+        ListeCode.ATTENTE_N1: ("Liste d’attente N°1", "Deuxièmes enfants (lien ≠ Autre).", 999),
+        ListeCode.ATTENTE_N2: ("Liste d’attente N°2", "Deuxièmes enfants (lien = Autre).", 999),
     }
     existing = {l.code for l in db.query(Liste).all()}
-    for code, (nom, desc) in wanted.items():
+    for code, (nom, desc, nmax) in wanted.items():
         if code not in existing:
-            db.add(Liste(code=code, nom=nom, description=desc))
+            db.add(Liste(code=code, nom=nom, description=desc, nombre_max=nmax))
     db.flush()
 
 
 def _next_rang_for_liste(db: Session, liste_id: int) -> int:
-    # Empêche les collisions en concurrence via advisory lock transactionnel
     db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": int(liste_id)})
     current_max = db.query(func.coalesce(func.max(DemandeInscription.rang_dans_liste), 0)).filter(
         DemandeInscription.liste_id == liste_id
@@ -56,18 +54,8 @@ def _next_rang_for_liste(db: Session, liste_id: int) -> int:
 
 
 def _get_max_enfants_par_parent(db: Session) -> int:
-    rec = db.query(AppSetting).filter(AppSetting.key == SETTINGS_KEY).first()
-    if not rec:
-        return DEFAULT_MAX_ENFANTS_PAR_PARENT
-    try:
-        payload = json.loads(rec.value)
-        val = payload.get("maxEnfantsParParent", DEFAULT_MAX_ENFANTS_PAR_PARENT)
-        if val is None:
-            return 999999
-        max_val = int(val)
-        return max_val if max_val > 0 else DEFAULT_MAX_ENFANTS_PAR_PARENT
-    except Exception:
-        return DEFAULT_MAX_ENFANTS_PAR_PARENT
+    _ = db
+    return get_max_enfants_par_parent(DEFAULT_MAX_ENFANTS_PAR_PARENT)
 
 
 def _compute_target_liste_code(*, parent_id: int, lien_parente: LienParente, is_first_child: bool) -> ListeCode:
@@ -79,7 +67,6 @@ def _compute_target_liste_code(*, parent_id: int, lien_parente: LienParente, is_
             )
         return ListeCode.PRINCIPALE
 
-    # deuxième enfant
     return ListeCode.ATTENTE_N2 if lien_parente == LienParente.AUTRE else ListeCode.ATTENTE_N1
 
 
@@ -110,10 +97,12 @@ def create_inscription_for_parent_user(
             nom=parent_nom,
             matricule=parent_matricule,
             email=None,
-            telephone=None,
-            genre=None,
-            nin=None,
-            adresse=None,
+            telephone="-",
+            genre="-",
+            nin="-",
+            adresse="-",
+            service_text=service.nom,
+            site_text="",
             service_id=service.id,
             site_id=None,
             user_id=user.id,
@@ -121,16 +110,15 @@ def create_inscription_for_parent_user(
         db.add(parent)
         db.flush()
     else:
-        # Synchronisation minimale (sans poser de questions)
         parent.prenom = parent_prenom
         parent.nom = parent_nom
         parent.matricule = parent_matricule
         if parent.service_id is None:
             svc = _get_or_create_service(db, parent_service_nom)
             parent.service_id = svc.id
+            parent.service_text = svc.nom
 
     max_enfants = _get_max_enfants_par_parent(db)
-    # Limite dynamique pilotée par le super admin
     nb_enfants = db.query(func.count(Enfant.id)).filter(Enfant.parent_id == parent.id).scalar() or 0
     if nb_enfants >= max_enfants:
         raise HTTPException(
@@ -165,12 +153,10 @@ def create_inscription_for_parent_user(
         enfant_id=enfant.id,
         liste_id=target_liste.id,
         rang_dans_liste=rang,
-        date_inscription=datetime.now(timezone.utc),
+        date_inscription=date.today(),
         statut=DemandeStatut.SOUMISE,
-        non_validation_reason=None,
-        is_selection_finale=False,
-        selected_by_user_id=None,
-        selected_at=None,
+        non_validation_reason="",
+        user_id=user.id,
     )
     db.add(demande)
     db.flush()
@@ -187,7 +173,6 @@ def set_titulaire(*, db: Session, user: User, enfant_id_titulaire: int) -> None:
     if len(enfants) == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Aucun enfant inscrit.")
     if len(enfants) == 1:
-        # Le seul enfant reste titulaire
         enfants[0].is_titulaire = True
         return
 
@@ -222,10 +207,8 @@ def request_desistement(*, db: Session, user: User, demande_id: int, reason: str
 
     d = Desistement(
         demande_inscription_id=demande.id,
-        validated=False,
-        validated_by_user_id=None,
-        validated_at=None,
-        reason=reason,
+        user_id=user.id,
+        raison=(reason or "")[:191],
     )
     db.add(d)
     db.flush()
@@ -247,15 +230,6 @@ def cancel_desistement(*, db: Session, user: User, demande_id: int) -> None:
 
     if demande.desistement is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Aucun désistement à annuler.")
-
-    if demande.desistement.validated:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Annulation impossible : le gestionnaire/super administrateur a déjà validé le désistement. "
-                "Veuillez contacter le gestionnaire."
-            ),
-        )
 
     db.delete(demande.desistement)
     db.flush()
@@ -281,23 +255,16 @@ def reinscrire_desiste(*, db: Session, user: User, demande_id: int) -> DemandeIn
             detail="Réinscription impossible : seul un enfant désisté peut être réinscrit.",
         )
 
-    if demande.desistement is None or not demande.desistement.validated:
+    if demande.desistement is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Réinscription impossible : le désistement n'est pas validé.",
+            detail="Réinscription impossible : un désistement est encore en cours de traitement.",
         )
 
-    # Respect strict de l'ordre d'arrivée : le rang devient le dernier + 1
     new_rang = _next_rang_for_liste(db, demande.liste_id)
     demande.rang_dans_liste = new_rang
     demande.statut = DemandeStatut.SOUMISE
-    demande.non_validation_reason = None
-    demande.is_selection_finale = False
-    demande.selected_by_user_id = None
-    demande.selected_at = None
+    demande.non_validation_reason = ""
 
-    # On retire le désistement validé pour permettre un futur cycle normal.
-    db.delete(demande.desistement)
     db.flush()
     return demande
-
