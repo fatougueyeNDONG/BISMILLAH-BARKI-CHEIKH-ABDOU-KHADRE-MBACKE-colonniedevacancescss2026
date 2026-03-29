@@ -149,10 +149,9 @@ def create_user(
             body=(
                 "Bonjour,\n\n"
                 f"Votre compte administrateur a été créé.\n"
-                f"- Email: {contact}\n"
-                f"- Matricule: {user.matricule}\n"
+                f"- Identifiant (e-mail): {contact}\n"
                 f"- Mot de passe temporaire: {temp_password}\n\n"
-                "Vous pouvez vous connecter avec votre e-mail (ou matricule) et ce mot de passe: "
+                "Connectez-vous avec cette adresse e-mail et ce mot de passe sur :\n"
                 "http://localhost:8080\n\n"
                 "À la première connexion, vous serez obligé de changer ce mot de passe.\n"
                 "Cordialement.\n"
@@ -160,10 +159,9 @@ def create_user(
             html_body=(
                 "<p>Bonjour,</p>"
                 f"<p>Votre compte administrateur a été créé.<br>"
-                f"- Email: {contact}<br>"
-                f"- Matricule: {user.matricule}<br>"
+                f"- Identifiant (e-mail): {contact}<br>"
                 f"- Mot de passe temporaire: {temp_password}</p>"
-                '<p>Veuillez vous connecter à l\'application : '
+                '<p>Veuillez vous connecter à l\'application avec votre e-mail et ce mot de passe : '
                 '<a href="http://localhost:8080/?force_login=1">Accéder à l\'application</a>.</p>'
                 "<p>À la première connexion, vous serez obligé de changer ce mot de passe.<br>"
                 "Cordialement.</p>"

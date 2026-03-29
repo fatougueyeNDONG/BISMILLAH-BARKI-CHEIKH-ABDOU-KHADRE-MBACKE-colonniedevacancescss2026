@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -30,19 +30,11 @@ def _must_change_password(user: User) -> bool:
 
 
 def _resolve_admin_login_user(db: Session, login: str) -> User | None:
-    login = login.strip()
+    """Connexion admin / gestionnaire uniquement par e-mail (remember_token), pas par matricule."""
+    login = login.strip().lower()
     if not login:
         return None
-    return (
-        db.query(User)
-        .filter(
-            or_(
-                User.matricule == login,
-                User.remember_token == login,
-            )
-        )
-        .first()
-    )
+    return db.query(User).filter(func.lower(User.remember_token) == login).first()
 
 
 @router.post("/login-parent", response_model=TokenResponse)

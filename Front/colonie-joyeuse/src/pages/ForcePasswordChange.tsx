@@ -10,12 +10,21 @@ import { AlertTriangle, Lock, CheckCircle2 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
 export default function ForcePasswordChange() {
-  const { pendingParent, setAuthStep, setPendingParent, token } = useAuth();
+  const {
+    pendingParent,
+    pendingAdminFirstLogin,
+    token,
+    logout,
+    finalizeAdminFirstLogin,
+  } = useAuth();
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successOpen, setSuccessOpen] = useState(false);
+
+  const isAdminFlow = Boolean(pendingAdminFirstLogin);
+  const isParentFlow = Boolean(pendingParent);
 
   const handleSubmit = async () => {
     if (!newPwd || !confirmPwd) {
@@ -34,16 +43,28 @@ export default function ForcePasswordChange() {
       return;
     }
     if (!token) {
-      setErrorMessage("Session invalide. Veuillez vous reconnecter.");
+      setErrorMessage('Session invalide. Veuillez vous reconnecter.');
       setErrorOpen(true);
       return;
     }
     try {
-      await apiRequest<{ ok: boolean }>('/auth/change-password', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ old_password: 'Passer123', new_password: newPwd }),
-      });
+      if (isParentFlow) {
+        await apiRequest<{ ok: boolean }>('/auth/change-password', {
+          method: 'POST',
+          token,
+          body: JSON.stringify({ old_password: 'Passer123', new_password: newPwd }),
+        });
+      } else if (isAdminFlow) {
+        await apiRequest<{ ok: boolean }>('/auth/change-password-first-login', {
+          method: 'POST',
+          token,
+          body: JSON.stringify({ new_password: newPwd }),
+        });
+      } else {
+        setErrorMessage('Session invalide. Veuillez vous reconnecter.');
+        setErrorOpen(true);
+        return;
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Impossible de modifier le mot de passe.');
       setErrorOpen(true);
@@ -54,9 +75,25 @@ export default function ForcePasswordChange() {
 
   const handleSuccessClose = () => {
     setSuccessOpen(false);
-    setPendingParent(null);
-    setAuthStep('logged_out');
+    if (pendingAdminFirstLogin) {
+      finalizeAdminFirstLogin(pendingAdminFirstLogin.email, pendingAdminFirstLogin.role);
+      return;
+    }
+    logout();
   };
+
+  if (!isParentFlow && !isAdminFlow) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="bg-card rounded-xl shadow-elevated p-8 max-w-md text-center space-y-4">
+          <p className="text-muted-foreground">Session invalide ou expirée.</p>
+          <Button onClick={() => logout()} className="rounded-lg">
+            Retour à la connexion
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -67,14 +104,25 @@ export default function ForcePasswordChange() {
             <div>
               <h2 className="text-xl font-bold text-foreground">Changement de mot de passe obligatoire</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Bienvenue <strong>{pendingParent?.prenom} {pendingParent?.nom}</strong> ! Pour des raisons de sécurité, veuillez définir votre propre mot de passe.
+                {isParentFlow ? (
+                  <>
+                    Bienvenue <strong>{pendingParent?.prenom} {pendingParent?.nom}</strong> ! Pour des raisons de sécurité, veuillez définir votre propre mot de passe.
+                  </>
+                ) : (
+                  <>
+                    Compte <strong>{pendingAdminFirstLogin?.role === 'super_admin' ? 'super administrateur' : 'gestionnaire'}</strong> — définissez un mot de passe personnel avant d’accéder à l’espace d’administration.
+                  </>
+                )}
               </p>
             </div>
           </div>
 
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
             <p className="text-xs text-amber-800">
-              <strong>🔒 Première connexion :</strong> Le mot de passe que vous aviez reçu était temporaire. Définissez un mot de passe personnel et sécurisé.
+              <strong>Première connexion :</strong>{' '}
+              {isParentFlow
+                ? 'Le mot de passe par défaut était temporaire. Choisissez un mot de passe sécurisé.'
+                : 'Le mot de passe reçu par e-mail était temporaire. Choisissez un mot de passe sécurisé.'}
             </p>
           </div>
 
@@ -113,7 +161,7 @@ export default function ForcePasswordChange() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={successOpen} onOpenChange={handleSuccessClose}>
+      <Dialog open={successOpen} onOpenChange={(open) => { if (!open) handleSuccessClose(); }}>
         <DialogContent className="sm:max-w-md rounded-xl">
           <DialogHeader>
             <div className="flex items-center gap-3">
@@ -121,10 +169,12 @@ export default function ForcePasswordChange() {
               <DialogTitle className="text-foreground">Mot de passe défini avec succès</DialogTitle>
             </div>
             <DialogDescription className="pt-2">
-              Votre nouveau mot de passe a été enregistré. Vous allez être redirigé vers la page de connexion pour vous connecter avec vos nouveaux identifiants.
+              {isAdminFlow
+                ? 'Votre nouveau mot de passe est enregistré. Vous pouvez accéder à l’espace d’administration.'
+                : 'Votre nouveau mot de passe a été enregistré. Vous allez être redirigé vers la page de connexion pour vous connecter avec vos nouveaux identifiants.'}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter><Button onClick={handleSuccessClose} className="bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg">Retour à la connexion</Button></DialogFooter>
+          <DialogFooter><Button onClick={handleSuccessClose} className="bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg">{isAdminFlow ? 'Accéder à l’espace' : 'Retour à la connexion'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
