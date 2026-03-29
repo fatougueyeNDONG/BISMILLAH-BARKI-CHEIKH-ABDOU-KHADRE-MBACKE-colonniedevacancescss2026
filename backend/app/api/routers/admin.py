@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.enums import DemandeStatut, ListeCode, UserRole
-from app.models.models import DemandeInscription, Desistement, Enfant, Liste, Parent, Site, User
+from app.models.models import DemandeInscription, Desistement, Enfant, Liste, Parent, Service, Site, User
 from app.services.email import send_email, uniq_emails
 from app.services.email_templates import (
     body_desistement_validated,
@@ -97,6 +97,17 @@ def update_runtime_settings(
     data = payload.model_dump()
     write_settings({**_default_runtime_settings(), **data})
     return data
+
+
+@router.get("/services")
+def list_services(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Liste des services (table `services`) pour formulaires admin (ex. création parent)."""
+    _ = user
+    rows = db.query(Service).order_by(Service.nom.asc()).all()
+    return [{"id": r.id, "nom": r.nom, "description": r.description} for r in rows]
 
 
 @router.get("/sites")

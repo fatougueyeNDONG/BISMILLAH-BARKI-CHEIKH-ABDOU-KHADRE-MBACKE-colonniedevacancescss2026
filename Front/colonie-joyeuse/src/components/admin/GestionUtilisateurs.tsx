@@ -49,6 +49,17 @@ interface ParentUserUI {
   telephone?: string;
 }
 
+interface RefServiceRow {
+  id: number;
+  nom: string;
+}
+
+interface RefSiteRow {
+  id: number;
+  nom: string;
+  code: number;
+}
+
 export default function GestionUtilisateurs() {
   const { token } = useAuth();
   const DEFAULT_PARENT_PASSWORD = 'Passer123';
@@ -85,6 +96,8 @@ export default function GestionUtilisateurs() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importExcelOpen, setImportExcelOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [refServices, setRefServices] = useState<RefServiceRow[]>([]);
+  const [refSites, setRefSites] = useState<RefSiteRow[]>([]);
 
   const admins: AdminUserUI[] = rawUsers
     .filter(u => ['GESTIONNAIRE', 'SUPER_ADMIN'].includes(String(u.role).toUpperCase()))
@@ -113,6 +126,25 @@ export default function GestionUtilisateurs() {
       site: u.parent_site_code || undefined,
       telephone: u.parent_telephone || undefined,
     }));
+
+  const loadServicesAndSites = async () => {
+    if (!token) return;
+    try {
+      const [svc, st] = await Promise.all([
+        apiRequest<RefServiceRow[]>('/admin/services', { token }),
+        apiRequest<RefSiteRow[]>('/admin/sites', { token }),
+      ]);
+      setRefServices(Array.isArray(svc) ? svc : []);
+      setRefSites(Array.isArray(st) ? st : []);
+    } catch {
+      setRefServices([]);
+      setRefSites([]);
+    }
+  };
+
+  useEffect(() => {
+    void loadServicesAndSites();
+  }, [token]);
 
   const loadUsers = async () => {
     if (!token) return;
@@ -293,8 +325,20 @@ export default function GestionUtilisateurs() {
 
   const handleCreateParent = async () => {
     if (!token) return;
-    if (!newParentMatricule || !newParentPrenom || !newParentNom || !newParentService || !newParentSite || !newParentTelephone) {
+    if (!newParentMatricule || !newParentPrenom || !newParentNom || !newParentService || !newParentTelephone) {
       toast({ title: 'Champs requis', description: 'Tous les champs sont obligatoires sauf l’email.', variant: 'destructive' });
+      return;
+    }
+    if (refSites.length > 0 && !newParentSite) {
+      toast({ title: 'Champs requis', description: 'Veuillez sélectionner une agence.', variant: 'destructive' });
+      return;
+    }
+    if (refSites.length === 0) {
+      toast({
+        title: 'Aucune agence',
+        description: 'Créez au moins une agence (menu Agences) avant d’ajouter un parent.',
+        variant: 'destructive',
+      });
       return;
     }
     try {
@@ -316,6 +360,7 @@ export default function GestionUtilisateurs() {
       setCreateParentOpen(false);
       setNewParentMatricule(''); setNewParentPrenom(''); setNewParentNom(''); setNewParentService(''); setNewParentEmail(''); setNewParentTelephone(''); setNewParentSite('');
       await loadUsers();
+      await loadServicesAndSites();
       toast({ title: '✅ Parent créé' });
     } catch (error) {
       toast({ title: "Échec création parent", description: error instanceof Error ? error.message : 'Erreur API', variant: 'destructive' });
@@ -584,7 +629,13 @@ export default function GestionUtilisateurs() {
       </Dialog>
 
       {/* Create Parent */}
-      <Dialog open={createParentOpen} onOpenChange={setCreateParentOpen}>
+      <Dialog
+        open={createParentOpen}
+        onOpenChange={open => {
+          setCreateParentOpen(open);
+          if (open) void loadServicesAndSites();
+        }}
+      >
         <DialogContent className="sm:max-w-md rounded-xl">
           <DialogHeader><DialogTitle>Nouveau parent / Agent CSS</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -593,8 +644,42 @@ export default function GestionUtilisateurs() {
               <div className="space-y-2"><Label>Prénom *</Label><Input value={newParentPrenom} onChange={e => setNewParentPrenom(e.target.value)} className="rounded-lg" /></div>
               <div className="space-y-2"><Label>Nom *</Label><Input value={newParentNom} onChange={e => setNewParentNom(e.target.value)} className="rounded-lg" /></div>
             </div>
-            <div className="space-y-2"><Label>Service *</Label><Input value={newParentService} onChange={e => setNewParentService(e.target.value)} className="rounded-lg" /></div>
-            <div className="space-y-2"><Label>Site *</Label><Input value={newParentSite} onChange={e => setNewParentSite(e.target.value)} placeholder="Code du site (ex: VDN)" className="rounded-lg" /></div>
+            <div className="space-y-2">
+              <Label>Service *</Label>
+              <Input
+                value={newParentService}
+                onChange={e => setNewParentService(e.target.value)}
+                list="new-parent-service-datalist"
+                placeholder="Choisir une suggestion ou saisir un service"
+                className="rounded-lg"
+              />
+              <datalist id="new-parent-service-datalist">
+                {refServices.map(s => (
+                  <option key={s.id} value={s.nom} />
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-2">
+              <Label>Site (agence) *</Label>
+              {refSites.length > 0 ? (
+                <Select value={newParentSite || undefined} onValueChange={setNewParentSite}>
+                  <SelectTrigger className="rounded-lg">
+                    <SelectValue placeholder="Sélectionner une agence" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {refSites.map(s => (
+                      <SelectItem key={s.id} value={String(s.code)}>
+                        {s.nom} (code {s.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                  Aucune agence en base. Créez des sites dans <strong>Administration → Agences</strong>, puis rouvrez ce formulaire.
+                </p>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Email</Label><Input value={newParentEmail} onChange={e => setNewParentEmail(e.target.value)} type="email" className="rounded-lg" /></div>
               <div className="space-y-2"><Label>Téléphone *</Label><Input value={newParentTelephone} onChange={e => setNewParentTelephone(e.target.value)} className="rounded-lg" /></div>
@@ -613,7 +698,13 @@ export default function GestionUtilisateurs() {
       </Dialog>
 
       {/* Edit Parent */}
-      <Dialog open={editParentOpen} onOpenChange={setEditParentOpen}>
+      <Dialog
+        open={editParentOpen}
+        onOpenChange={open => {
+          setEditParentOpen(open);
+          if (open) void loadServicesAndSites();
+        }}
+      >
         <DialogContent className="sm:max-w-md rounded-xl">
           <DialogHeader><DialogTitle>Modifier le parent</DialogTitle></DialogHeader>
           {editingParent && (
@@ -623,8 +714,48 @@ export default function GestionUtilisateurs() {
                 <div className="space-y-2"><Label>Prénom</Label><Input value={editingParent.prenom} onChange={e => setEditingParent({ ...editingParent, prenom: e.target.value })} className="rounded-lg" /></div>
                 <div className="space-y-2"><Label>Nom</Label><Input value={editingParent.nom} onChange={e => setEditingParent({ ...editingParent, nom: e.target.value })} className="rounded-lg" /></div>
               </div>
-              <div className="space-y-2"><Label>Service</Label><Input value={editingParent.service} onChange={e => setEditingParent({ ...editingParent, service: e.target.value })} className="rounded-lg" /></div>
-              <div className="space-y-2"><Label>Site</Label><Input value={editingParent.site || ''} onChange={e => setEditingParent({ ...editingParent, site: e.target.value })} placeholder="Code du site (ex: VDN)" className="rounded-lg" /></div>
+              <div className="space-y-2">
+                <Label>Service</Label>
+                <Input
+                  value={editingParent.service}
+                  onChange={e => setEditingParent({ ...editingParent, service: e.target.value })}
+                  list="edit-parent-service-datalist"
+                  placeholder="Service"
+                  className="rounded-lg"
+                />
+                <datalist id="edit-parent-service-datalist">
+                  {refServices.map(s => (
+                    <option key={s.id} value={s.nom} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="space-y-2">
+                <Label>Site (agence)</Label>
+                {refSites.length > 0 ? (
+                  <Select
+                    value={editingParent.site || undefined}
+                    onValueChange={v => setEditingParent({ ...editingParent, site: v })}
+                  >
+                    <SelectTrigger className="rounded-lg">
+                      <SelectValue placeholder="Sélectionner une agence" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {refSites.map(s => (
+                        <SelectItem key={s.id} value={String(s.code)}>
+                          {s.nom} (code {s.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={editingParent.site || ''}
+                    onChange={e => setEditingParent({ ...editingParent, site: e.target.value })}
+                    placeholder="Code agence"
+                    className="rounded-lg"
+                  />
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Email</Label><Input value={editingParent.email || ''} onChange={e => setEditingParent({ ...editingParent, email: e.target.value })} className="rounded-lg" /></div>
                 <div className="space-y-2"><Label>Téléphone</Label><Input value={editingParent.telephone || ''} onChange={e => setEditingParent({ ...editingParent, telephone: e.target.value })} className="rounded-lg" /></div>
