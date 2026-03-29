@@ -432,9 +432,30 @@ export default function GestionUtilisateurs() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleResetPassword = async () => {
-    if (!token) return;
-    if (!resetPwdTarget || !resetNewPwd) return;
+  const handleResetAdminAuto = async () => {
+    if (!token || !resetPwdTarget || resetPwdTarget.type !== 'admin') return;
+    try {
+      await apiRequest(`/admin/users/${resetPwdTarget.id}/reset-password-auto`, { method: 'POST', token });
+      await loadUsers();
+      toast({
+        title: '✅ Mot de passe réinitialisé',
+        description: 'Un mot de passe temporaire a été envoyé par e-mail si l’adresse de contact est renseignée.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Réinitialisation impossible',
+        description: error instanceof Error ? error.message : 'Erreur API',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setResetPwdOpen(false);
+    setResetNewPwd('');
+  };
+
+  const handleResetPasswordParent = async () => {
+    if (!token || !resetPwdTarget || resetPwdTarget.type !== 'parent') return;
+    if (!resetNewPwd) return;
     try {
       await apiRequest(`/admin/users/${resetPwdTarget.id}/reset-password`, {
         method: 'POST',
@@ -444,7 +465,11 @@ export default function GestionUtilisateurs() {
       await loadUsers();
       toast({ title: '✅ Mot de passe réinitialisé' });
     } catch (error) {
-      toast({ title: "Réinitialisation impossible", description: error instanceof Error ? error.message : 'Erreur API', variant: 'destructive' });
+      toast({
+        title: 'Réinitialisation impossible',
+        description: error instanceof Error ? error.message : 'Erreur API',
+        variant: 'destructive',
+      });
       return;
     }
     setResetPwdOpen(false);
@@ -773,19 +798,50 @@ export default function GestionUtilisateurs() {
       </Dialog>
 
       {/* Reset Password */}
-      <Dialog open={resetPwdOpen} onOpenChange={setResetPwdOpen}>
+      <Dialog
+        open={resetPwdOpen}
+        onOpenChange={open => {
+          setResetPwdOpen(open);
+          if (!open) setResetNewPwd('');
+        }}
+      >
         <DialogContent className="sm:max-w-md rounded-xl">
           <DialogHeader>
             <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">Nouveau mot de passe pour <strong>{resetPwdTarget?.name}</strong></p>
-          <div className="space-y-2">
-            <Label>Nouveau mot de passe</Label>
-            <Input type="password" value={resetNewPwd} onChange={e => setResetNewPwd(e.target.value)} className="rounded-lg" />
-          </div>
+          {resetPwdTarget?.type === 'admin' ? (
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Un mot de passe temporaire sera généré automatiquement et envoyé par e-mail à{' '}
+              <strong className="text-foreground">{resetPwdTarget.name}</strong>. À la prochaine connexion, un changement de mot de passe sera obligatoire.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Nouveau mot de passe pour <strong className="text-foreground">{resetPwdTarget?.name}</strong>
+              </p>
+              <div className="space-y-2">
+                <Label>Nouveau mot de passe</Label>
+                <Input type="password" value={resetNewPwd} onChange={e => setResetNewPwd(e.target.value)} className="rounded-lg" />
+              </div>
+            </>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setResetPwdOpen(false)} className="rounded-lg">Annuler</Button>
-            <Button onClick={handleResetPassword} className="rounded-lg bg-primary text-primary-foreground">Réinitialiser</Button>
+            <Button variant="outline" onClick={() => setResetPwdOpen(false)} className="rounded-lg">
+              Annuler
+            </Button>
+            {resetPwdTarget?.type === 'admin' ? (
+              <Button onClick={handleResetAdminAuto} className="rounded-lg bg-primary text-primary-foreground">
+                Réinitialiser
+              </Button>
+            ) : (
+              <Button
+                onClick={handleResetPasswordParent}
+                disabled={!resetNewPwd}
+                className="rounded-lg bg-primary text-primary-foreground"
+              >
+                Réinitialiser
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
