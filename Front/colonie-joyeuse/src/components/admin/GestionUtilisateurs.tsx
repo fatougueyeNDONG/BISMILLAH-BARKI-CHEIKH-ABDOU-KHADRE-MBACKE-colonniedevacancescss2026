@@ -71,7 +71,6 @@ export default function GestionUtilisateurs() {
   const [newNom, setNewNom] = useState('');
   const [newPrenom, setNewPrenom] = useState('');
   const [newRole, setNewRole] = useState<'gestionnaire' | 'super_admin'>('gestionnaire');
-  const [newPassword, setNewPassword] = useState('');
   const [newTelephone, setNewTelephone] = useState('');
 
   // Parent creation
@@ -263,7 +262,7 @@ export default function GestionUtilisateurs() {
         }),
       });
       setCreateOpen(false);
-      setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewPassword(''); setNewTelephone('');
+      setNewEmail(''); setNewNom(''); setNewPrenom(''); setNewTelephone('');
       await loadUsers();
       toast({ title: '✅ Administrateur créé' });
     } catch (error) {
@@ -578,7 +577,6 @@ export default function GestionUtilisateurs() {
             </div>
             <div className="space-y-2"><Label>Email</Label><Input value={newEmail} onChange={e => setNewEmail(e.target.value)} type="email" className="rounded-lg" /></div>
             <div className="space-y-2"><Label>Téléphone</Label><Input value={newTelephone} onChange={e => setNewTelephone(e.target.value)} placeholder="77 123 45 67" className="rounded-lg" /></div>
-            <div className="space-y-2"><Label>Mot de passe</Label><Input value={newPassword} onChange={e => setNewPassword(e.target.value)} type="password" className="rounded-lg" /></div>
             <div className="space-y-2">
               <Label>Rôle</Label>
               <Select value={newRole} onValueChange={(v: any) => setNewRole(v)}>
@@ -588,6 +586,11 @@ export default function GestionUtilisateurs() {
                   <SelectItem value="super_admin">Super Administrateur</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">
+                <strong className="text-primary">ℹ️ Note :</strong> Le mot de passe temporaire est généré automatiquement et envoyé par e-mail. Le changement est obligatoire à la première connexion.
+              </p>
             </div>
           </div>
           <DialogFooter>
