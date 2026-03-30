@@ -134,7 +134,7 @@ class DemandeInscription(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     date_inscription: Mapped[date] = mapped_column(Date, nullable=False)
-    rang_dans_liste: Mapped[int] = mapped_column("rang", Integer, nullable=False)
+    rang_dans_liste: Mapped[int] = mapped_column(Integer, nullable=False)
     statut: Mapped[DemandeStatut] = mapped_column(
         IntEnumType(DemandeStatut, DEMANDE_STATUT_TO_INT),
         nullable=False,
