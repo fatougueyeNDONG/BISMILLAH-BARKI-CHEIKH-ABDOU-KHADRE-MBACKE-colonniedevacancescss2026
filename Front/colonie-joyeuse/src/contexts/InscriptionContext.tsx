@@ -202,6 +202,8 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
     }, {});
     const mapped: Enfant[] = merged.map((d) => {
       const liste = mapListe(d.liste);
+      const lienParente = mapLien(d.enfant?.lien_parente || '');
+      const isTitulaire = Boolean(d.enfant?.is_titulaire);
       const statut = String(d.statut || '').toUpperCase();
       const rang =
         typeof d.rang === 'number'
@@ -216,9 +218,9 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
         nom: d.enfant?.nom || '',
         dateNaissance: d.enfant?.date_naissance || '',
         sexe: String(d.enfant?.sexe || '').toUpperCase() === 'F' ? 'F' : 'M',
-        lienParente: mapLien(d.enfant?.lien_parente || ''),
+        lienParente,
         liste,
-        statut: mapStatut(liste),
+        statut: isTitulaire ? 'Titulaire' : lienParente === 'Autre' ? 'Suppléant N2' : 'Suppléant N1',
         dateInscription: d.date_inscription,
         validation: statut === 'NON_VALIDEE' ? 'refusé' : statut === 'RETENUE' || statut === 'DESISTEE' ? 'validé' : 'en_attente',
         motifRefus: d.non_validation_reason || undefined,
