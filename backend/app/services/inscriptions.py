@@ -84,16 +84,24 @@ def _get_max_enfants_par_parent(db: Session) -> int:
     return get_max_enfants_par_parent(DEFAULT_MAX_ENFANTS_PAR_PARENT)
 
 
-def _compute_target_liste_code(*, parent_id: int, lien_parente: LienParente, is_first_child: bool) -> ListeCode:
-    if is_first_child:
+def _compute_target_liste_code(*, lien_parente: LienParente, inscription_index: int) -> ListeCode:
+    """inscription_index : 1 = 1er enfant inscrit pour ce parent, 2 = 2e, 3 = 3e, etc."""
+    if inscription_index < 1:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur interne : index d'inscription invalide.",
+        )
+    if inscription_index == 1:
         if lien_parente == LienParente.AUTRE:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Inscription rejetée : pour le 1er enfant (titulaire), le lien de parenté ne peut pas être « Autre ».",
             )
         return ListeCode.PRINCIPALE
-
-    return ListeCode.ATTENTE_N2 if lien_parente == LienParente.AUTRE else ListeCode.ATTENTE_N1
+    if inscription_index == 2:
+        return ListeCode.ATTENTE_N2 if lien_parente == LienParente.AUTRE else ListeCode.ATTENTE_N1
+    # À partir du 3e enfant : toujours liste d'attente N°2, quel que soit le lien de parenté.
+    return ListeCode.ATTENTE_N2
 
 
 def create_inscription_for_parent_user(
@@ -183,10 +191,9 @@ def create_inscription_for_parent_user(
             detail=f"Inscription impossible : vous avez déjà inscrit {max_enfants} enfants (maximum autorisé).",
         )
 
-    is_first_child = nb_enfants_avec_demande == 0
-    target_code = _compute_target_liste_code(
-        parent_id=parent.id, lien_parente=enfant_lien_parente, is_first_child=is_first_child
-    )
+    inscription_index = nb_enfants_avec_demande + 1
+    is_first_child = inscription_index == 1
+    target_code = _compute_target_liste_code(lien_parente=enfant_lien_parente, inscription_index=inscription_index)
 
     ensure_listes_exist(db)
     target_liste = db.query(Liste).filter(Liste.code == target_code).first()
