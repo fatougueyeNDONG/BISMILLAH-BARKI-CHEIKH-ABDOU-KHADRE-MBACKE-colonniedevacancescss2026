@@ -107,6 +107,12 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
 
     const mapped: Enfant[] = demandes.map(d => {
       const liste = mapListe(d.liste_code);
+      const lien = mapLien(d.enfant_lien_parente);
+      const statut: Enfant['statut'] = d.enfant_is_titulaire
+        ? 'Titulaire'
+        : lien === 'Autre'
+          ? 'Suppléant N2'
+          : 'Suppléant N1';
       return {
         // We use demande_id as primary UI id to call parent action endpoints directly.
         id: String(d.id),
@@ -115,9 +121,10 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
         nom: d.enfant_nom,
         dateNaissance: d.enfant_date_naissance,
         sexe: String(d.enfant_sexe || '').toUpperCase() === 'F' ? 'F' : 'M',
-        lienParente: mapLien(d.enfant_lien_parente),
+        lienParente: lien,
         liste,
-        statut: mapStatut(liste),
+        // Garantit un seul titulaire visuel après "Définir titulaire".
+        statut,
         dateInscription: d.date_inscription,
         validation: d.statut === 'NON_VALIDEE' ? 'refusé' : d.statut === 'RETENUE' ? 'validé' : 'en_attente',
         motifRefus: d.non_validation_reason || undefined,
