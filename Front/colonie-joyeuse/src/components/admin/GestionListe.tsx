@@ -97,6 +97,7 @@ export default function GestionListe({ type }: Props) {
       (filterDesistement === 'refusé' && e.validation === 'refusé');
     return matchSearch && matchSexe && matchDesist;
   });
+  const rangByDemandeId = new Map(enfants.map((e, i) => [e.id, i + 1]));
 
   const handleTransfer = async () => {
     if (!transferTarget || !transferListe) return;
@@ -146,9 +147,9 @@ export default function GestionListe({ type }: Props) {
 
   const generateCSV = () => {
     const headers = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Service', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', 'Décision', 'Désistement'];
-    const rows = filteredEnfants.map(e => {
+    const rows = filteredEnfants.map((e) => {
       const p = parents.find(x => x.matricule === e.parentMatricule);
-      return [getRangDansListe(e.id), e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, e.validation || 'en_attente', e.desistement || 'Aucun'];
+      return [rangByDemandeId.get(e.id) ?? '', e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'Masculin' : 'Féminin', e.statut, e.validation || 'en_attente', e.desistement || 'Aucun'];
     });
     return { headers, rows };
   };
@@ -247,9 +248,9 @@ export default function GestionListe({ type }: Props) {
               {filteredEnfants.length === 0 ? (
                 <TableRow><TableCell colSpan={12} className="text-center py-12 text-muted-foreground">Aucun enfant dans cette liste</TableCell></TableRow>
               ) : (
-                filteredEnfants.map(e => {
+                filteredEnfants.map((e) => {
                   const p = parents.find(x => x.matricule === e.parentMatricule);
-                  const rang = getRangDansListe(e.id);
+                  const rang = rangByDemandeId.get(e.id) ?? '—';
                   const validation = e.validation || 'en_attente';
                   return (
                     <TableRow key={e.id} className={e.desistement === 'validé' ? 'opacity-50' : ''}>

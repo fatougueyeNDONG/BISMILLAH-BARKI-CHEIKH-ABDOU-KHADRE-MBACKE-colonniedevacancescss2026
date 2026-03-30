@@ -170,12 +170,7 @@ export default function ToutesInscriptions() {
       (p?.prenom || '').toLowerCase().includes(s)
     );
   });
-
-  const getRang = (enfant: Enfant) => {
-    if (typeof enfant.rangDansListe === 'number') return enfant.rangDansListe;
-    const listeEnfants = sortedEnfants.filter(e => e.liste === enfant.liste);
-    return listeEnfants.findIndex(e => e.id === enfant.id) + 1;
-  };
+  const rangByDemandeId = new Map(sortedEnfants.map((e, i) => [e.id, i + 1]));
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -255,11 +250,11 @@ export default function ToutesInscriptions() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map(e => {
+                  filtered.map((e) => {
                     const p = parents.find(x => x.matricule === e.parentMatricule);
                     return (
                       <TableRow key={e.id}>
-                        <TableCell className="font-bold text-foreground">{getRang(e)}</TableCell>
+                        <TableCell className="font-bold text-foreground">{rangByDemandeId.get(e.id) ?? '—'}</TableCell>
                         <TableCell className="font-mono tabular-nums text-sm">{e.parentMatricule}</TableCell>
                         <TableCell>{p?.nom || '—'}</TableCell>
                         <TableCell>{p?.prenom || '—'}</TableCell>

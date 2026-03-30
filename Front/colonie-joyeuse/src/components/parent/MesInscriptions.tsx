@@ -16,7 +16,7 @@ function calculateAge(dateNaissance: string): number {
 
 export default function MesInscriptions() {
   const { parent } = useAuth();
-  const { getEnfantsByParent, getRangDansListe } = useInscription();
+  const { getEnfantsByParent } = useInscription();
   if (!parent) return null;
 
   const enfants = getEnfantsByParent(parent.matricule);
@@ -104,9 +104,9 @@ export default function MesInscriptions() {
               {enfants.length === 0 ? (
                 <TableRow><TableCell colSpan={12} className="text-center py-8 text-muted-foreground">Aucune inscription</TableCell></TableRow>
               ) : (
-                enfants.map(e => (
+                enfants.map((e, i) => (
                   <TableRow key={e.id}>
-                    <TableCell className="font-bold text-foreground">{getRangDansListe(e.id)}</TableCell>
+                    <TableCell className="font-bold text-foreground">{i + 1}</TableCell>
                     <TableCell className="font-medium text-foreground">{e.prenom} {e.nom}</TableCell>
                     <TableCell className="tabular-nums">{new Date(e.dateNaissance).toLocaleDateString('fr-FR')}</TableCell>
                     <TableCell>{calculateAge(e.dateNaissance)} ans</TableCell>

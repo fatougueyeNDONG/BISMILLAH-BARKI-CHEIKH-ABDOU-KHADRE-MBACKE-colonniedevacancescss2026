@@ -22,7 +22,7 @@ export default function ListeInscriptions() {
     return age;
   };
 
-  /** Même ordre que le contexte admin : principale → N1 → N2, chaque liste triée par rang. */
+  /** Le rang affiché est l'index visuel dans le tableau trié chronologiquement. */
   const getStatutBadge = (statut: string) => {
     switch (statut) {
       case 'Titulaire': return 'bg-emerald-50 text-emerald-700';
@@ -41,18 +41,23 @@ export default function ListeInscriptions() {
     }
   };
 
-  const filtered = enfants.filter(e => {
+  const sortedEnfants = [...enfants].sort(
+    (a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime()
+  );
+
+  const filtered = sortedEnfants.filter(e => {
     if (!searchTerm) return true;
     const p = parents.find(x => x.matricule === e.parentMatricule);
     const s = searchTerm.toLowerCase();
     return e.parentMatricule.toLowerCase().includes(s) || e.nom.toLowerCase().includes(s) || e.prenom.toLowerCase().includes(s) || (p?.nom || '').toLowerCase().includes(s);
   });
+  const rangByDemandeId = new Map(sortedEnfants.map((e, i) => [e.id, i + 1]));
 
   const generateData = () => {
     const headers = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Service', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', 'Liste', 'Inscrit le'];
     const rows = filtered.map((e) => {
       const p = parents.find(x => x.matricule === e.parentMatricule);
-      const rang = typeof e.rangDansListe === 'number' ? e.rangDansListe : '';
+      const rang = rangByDemandeId.get(e.id) ?? '';
       return [rang, e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'M' : 'F', e.statut, getListeLabel(e.liste), new Date(e.dateInscription).toLocaleDateString('fr-FR')];
     });
     return { headers, rows };
@@ -86,7 +91,7 @@ export default function ListeInscriptions() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Toutes les inscriptions</h1>
           <p className="text-muted-foreground mt-1">
-            {enfants.length} inscription(s) — liste principale puis N°1 et N°2 ; la colonne Rang est le rang dans la liste concernée
+            {enfants.length} inscription(s) — la colonne Rang correspond à la position affichée (ordre chronologique)
           </p>
         </div>
         <div className="flex gap-2">
@@ -126,7 +131,7 @@ export default function ListeInscriptions() {
             <TableBody>
               {filtered.map((e) => {
                 const p = parents.find(x => x.matricule === e.parentMatricule);
-                const rang = typeof e.rangDansListe === 'number' ? e.rangDansListe : '—';
+                const rang = rangByDemandeId.get(e.id) ?? '—';
                 return (
                   <TableRow key={e.id}>
                     <TableCell className="font-bold text-foreground text-center">{rang}</TableCell>

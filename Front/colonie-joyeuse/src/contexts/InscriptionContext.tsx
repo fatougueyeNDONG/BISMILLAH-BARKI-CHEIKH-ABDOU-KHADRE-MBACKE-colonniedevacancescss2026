@@ -329,17 +329,15 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const getEnfantsByParent = (matricule: string) => {
-    return enfants.filter(e => e.parentMatricule === matricule);
+    return enfants
+      .filter(e => e.parentMatricule === matricule)
+      .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime());
   };
 
   const getEnfantsByListe = (liste: Enfant['liste']) => {
-    const byRangThenDate = (a: Enfant, b: Enfant) => {
-      const ra = typeof a.rangDansListe === 'number' ? a.rangDansListe : Number.MAX_SAFE_INTEGER;
-      const rb = typeof b.rangDansListe === 'number' ? b.rangDansListe : Number.MAX_SAFE_INTEGER;
-      if (ra !== rb) return ra - rb;
-      return new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime();
-    };
-    return enfants.filter(e => e.liste === liste).sort(byRangThenDate);
+    return enfants
+      .filter(e => e.liste === liste)
+      .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime());
   };
 
   const setTitulaire = async (matricule: string, enfantId: string) => {
@@ -491,7 +489,6 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
   const getRangDansListe = (enfantId: string) => {
     const enfant = enfants.find(e => e.id === enfantId);
     if (!enfant) return 0;
-    if (typeof enfant.rangDansListe === 'number') return enfant.rangDansListe;
     const listeEnfants = enfants
       .filter(e => e.liste === enfant.liste)
       .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime());
