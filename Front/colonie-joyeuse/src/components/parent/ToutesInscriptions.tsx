@@ -71,7 +71,7 @@ function mapRowsToState(rows: ApiTransparenceRow[]): { enfants: Enfant[]; parent
         : 'Suppléant N1';
     const sd = String(r.statut_demande || '').toUpperCase();
     const validation =
-      sd === 'NON_VALIDEE' ? 'refusé' : sd === 'RETENUE' || sd === 'DESISTEE' ? 'validé' : 'en_attente';
+      sd === 'NON_VALIDEE' ? 'refusé' : sd === 'RETENUE' ? 'validé' : 'en_attente';
     const dob = r.enfant_date_naissance.includes('T')
       ? r.enfant_date_naissance.slice(0, 10)
       : r.enfant_date_naissance;

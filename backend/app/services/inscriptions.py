@@ -360,6 +360,7 @@ def reinscrire_desiste(*, db: Session, user: User, demande_id: int) -> DemandeIn
     demande.rang_dans_liste = new_rang
     demande.statut = DemandeStatut.SOUMISE
     demande.non_validation_reason = ""
+    demande.updated_at = datetime.now(timezone.utc)
 
     db.flush()
     return demande

@@ -306,6 +306,7 @@ def _to_demande_out(db: Session, demande: DemandeInscription) -> DemandeOut:
         non_validation_reason=demande.non_validation_reason or None,
         is_selection_finale=(demande.statut == DemandeStatut.RETENUE),
         has_desistement_pending=(demande.desistement is not None and demande.statut != DemandeStatut.DESISTEE),
+        is_reinscrit=(demande.statut == DemandeStatut.SOUMISE and demande.updated_at is not None),
         enfant_id=enfant.id,
         enfant_prenom=enfant.prenom,
         enfant_nom=enfant.nom,

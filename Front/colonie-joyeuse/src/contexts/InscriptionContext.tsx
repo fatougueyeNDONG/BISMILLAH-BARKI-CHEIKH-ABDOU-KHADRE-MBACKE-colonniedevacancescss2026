@@ -97,6 +97,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
       statut: string;
       non_validation_reason?: string | null;
       has_desistement_pending?: boolean;
+      is_reinscrit?: boolean;
       enfant_id: number;
       enfant_prenom: string;
       enfant_nom: string;
@@ -129,6 +130,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
         dateInscription: d.date_inscription,
         validation: d.statut === 'NON_VALIDEE' ? 'refusé' : d.statut === 'RETENUE' ? 'validé' : 'en_attente',
         desistement: d.statut === 'DESISTEE' ? 'validé' : d.has_desistement_pending ? 'demandé' : null,
+        reinscrit: Boolean(d.is_reinscrit),
         motifRefus: d.non_validation_reason || undefined,
         rangDansListe: typeof d.rang_dans_liste === 'number' ? d.rang_dans_liste : undefined,
       };
@@ -224,7 +226,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
         liste,
         statut: isTitulaire ? 'Titulaire' : lienParente === 'Autre' ? 'Suppléant N2' : 'Suppléant N1',
         dateInscription: d.date_inscription,
-        validation: statut === 'NON_VALIDEE' ? 'refusé' : statut === 'RETENUE' || statut === 'DESISTEE' ? 'validé' : 'en_attente',
+        validation: statut === 'NON_VALIDEE' ? 'refusé' : statut === 'RETENUE' ? 'validé' : 'en_attente',
         motifRefus: d.non_validation_reason || undefined,
         desistement: statut === 'DESISTEE' ? 'validé' : desistementMap[d.demande_id] ? 'demandé' : null,
         rangDansListe: rang,
