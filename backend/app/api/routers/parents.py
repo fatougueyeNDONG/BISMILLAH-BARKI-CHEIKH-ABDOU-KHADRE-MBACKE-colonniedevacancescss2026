@@ -30,10 +30,12 @@ from app.services.email import send_email, uniq_emails
 from app.services.notify_helpers import collect_admin_emails
 from app.services.email_templates import (
     body_desistement_requested,
+    body_desistement_requested_admin,
     body_inscription,
     body_inscription_admin_notify,
     body_titulaire,
     subject_desistement,
+    subject_desistement_admin,
     subject_inscription,
     subject_inscription_admin_notify,
     subject_titulaire,
@@ -125,6 +127,7 @@ def mes_demandes(
         return []
     demandes = (
         db.query(DemandeInscription)
+        .options(joinedload(DemandeInscription.desistement))
         .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
         .filter(Enfant.parent_id == parent.id)
         .order_by(DemandeInscription.date_inscription.asc())
@@ -261,16 +264,32 @@ def demander_desistement(
 
     if parent and enfant_label:
         admin_emails = collect_admin_emails(db)
-        to = uniq_emails(([parent.email] if parent.email else []) + admin_emails)
         now = datetime.now(timezone.utc)
-        background.add_task(
-            send_email,
-            to=to,
-            subject=subject_desistement(parent.matricule, enfant_label),
-            body=body_desistement_requested(
-                parent_matricule=parent.matricule, enfant=enfant_label, when=now, reason=payload.reason
-            ),
-        )
+        if parent.email:
+            background.add_task(
+                send_email,
+                to=uniq_emails([parent.email]),
+                subject=subject_desistement(parent.matricule, enfant_label),
+                body=body_desistement_requested(
+                    parent_matricule=parent.matricule,
+                    enfant=enfant_label,
+                    when=now,
+                    reason=payload.reason,
+                ),
+            )
+        to_admins = uniq_emails(admin_emails)
+        if to_admins:
+            background.add_task(
+                send_email,
+                to=to_admins,
+                subject=subject_desistement_admin(parent.matricule, enfant_label),
+                body=body_desistement_requested_admin(
+                    parent_matricule=parent.matricule,
+                    enfant=enfant_label,
+                    when=now,
+                    reason=payload.reason,
+                ),
+            )
     return {"ok": True}
 
 
@@ -297,6 +316,22 @@ def reinscrire_enfant_desiste(
     return _to_demande_out(db, demande)
 
 
+def _dt_aware_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo:
+        return dt
+    return dt.replace(tzinfo=timezone.utc)
+
+
+def _date_desistement_affichage(demande: DemandeInscription) -> datetime | None:
+    if demande.statut == DemandeStatut.DESISTEE:
+        return _dt_aware_utc(demande.updated_at)
+    if demande.desistement is not None:
+        return _dt_aware_utc(demande.desistement.created_at)
+    return None
+
+
 def _to_demande_out(db: Session, demande: DemandeInscription) -> DemandeOut:
     db.refresh(demande)
     enfant = demande.enfant
@@ -316,6 +351,7 @@ def _to_demande_out(db: Session, demande: DemandeInscription) -> DemandeOut:
         is_selection_finale=(demande.statut == DemandeStatut.RETENUE),
         has_desistement_pending=(demande.desistement is not None and demande.statut != DemandeStatut.DESISTEE),
         is_reinscrit=(demande.statut == DemandeStatut.SOUMISE and demande.updated_at is not None),
+        date_desistement=_date_desistement_affichage(demande),
         enfant_id=enfant.id,
         enfant_prenom=enfant.prenom,
         enfant_nom=enfant.nom,

@@ -15,8 +15,11 @@ from app.models.models import DemandeInscription, Desistement, Enfant, Liste, Pa
 from app.services.email import send_email, uniq_emails
 from app.services.email_templates import (
     body_desistement_validated,
+    body_desistement_validated_admin,
     body_selection,
     body_transfer,
+    subject_desistement_valide_admin,
+    subject_desistement_valide_parent,
     subject_selection,
     subject_transfer,
 )
@@ -738,15 +741,28 @@ def valider_desistement(
     db.commit()
 
     admin_emails = collect_admin_emails(db)
-    to = uniq_emails(([parent.email] if parent.email else []) + admin_emails)
-    background.add_task(
-        send_email,
-        to=to,
-        subject=f"Colonie 2026 — Désistement validé ({parent.matricule}) — {enfant.nom}",
-        body=body_desistement_validated(
-            parent_matricule=parent.matricule,
-            enfant=f"{enfant.prenom} {enfant.nom}",
-            when=validated_at,
-        ),
-    )
+    enfant_label = f"{enfant.prenom} {enfant.nom}"
+    if parent.email:
+        background.add_task(
+            send_email,
+            to=uniq_emails([parent.email]),
+            subject=subject_desistement_valide_parent(parent.matricule, enfant_label),
+            body=body_desistement_validated(
+                parent_matricule=parent.matricule,
+                enfant=enfant_label,
+                when=validated_at,
+            ),
+        )
+    to_admins = uniq_emails(admin_emails)
+    if to_admins:
+        background.add_task(
+            send_email,
+            to=to_admins,
+            subject=subject_desistement_valide_admin(parent.matricule, enfant_label),
+            body=body_desistement_validated_admin(
+                parent_matricule=parent.matricule,
+                enfant=enfant_label,
+                when=validated_at,
+            ),
+        )
     return {"ok": True}

@@ -98,6 +98,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
       non_validation_reason?: string | null;
       has_desistement_pending?: boolean;
       is_reinscrit?: boolean;
+      date_desistement?: string | null;
       enfant_id: number;
       enfant_prenom: string;
       enfant_nom: string;
@@ -133,6 +134,11 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
         reinscrit: Boolean(d.is_reinscrit),
         motifRefus: d.non_validation_reason || undefined,
         rangDansListe: typeof d.rang_dans_liste === 'number' ? d.rang_dans_liste : undefined,
+        dateDesistement: d.date_desistement
+          ? (String(d.date_desistement).includes('T')
+              ? String(d.date_desistement).split('T')[0]
+              : String(d.date_desistement))
+          : undefined,
       };
     });
     setEnfants(mapped);

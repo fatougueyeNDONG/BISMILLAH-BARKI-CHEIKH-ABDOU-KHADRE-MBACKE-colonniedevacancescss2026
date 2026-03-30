@@ -118,6 +118,10 @@ def subject_desistement(parent_matricule: str, enfant_nom: str) -> str:
     return f"Colonie 2026 — Désistement ({parent_matricule}) — {enfant_nom}"
 
 
+def subject_desistement_admin(parent_matricule: str, enfant_nom: str) -> str:
+    return f"Colonie 2026 — Désistement à traiter — {parent_matricule} — {enfant_nom}"
+
+
 def body_desistement_requested(*, parent_matricule: str, enfant: str, when: datetime, reason: str | None):
     return (
         "Bonjour,\n\n"
@@ -130,6 +134,34 @@ def body_desistement_requested(*, parent_matricule: str, enfant: str, when: date
     )
 
 
+def body_desistement_requested_admin(
+    *,
+    parent_matricule: str,
+    enfant: str,
+    when: datetime,
+    reason: str | None,
+):
+    return (
+        "Bonjour,\n\n"
+        "Un parent a enregistré une demande de désistement pour la Colonie 2026. "
+        "Elle est en attente de validation dans l’espace gestionnaire.\n\n"
+        f"- Matricule parent: {parent_matricule}\n"
+        f"- Enfant concerné: {enfant}\n"
+        f"- Date de la demande: {_dt(when)}\n"
+        f"- Motif communiqué par le parent: {reason or '—'}\n\n"
+        "Merci de traiter cette demande depuis l’administration.\n\n"
+        "Cordialement.\n"
+    )
+
+
+def subject_desistement_valide_parent(parent_matricule: str, enfant_nom: str) -> str:
+    return f"Colonie 2026 — Désistement validé ({parent_matricule}) — {enfant_nom}"
+
+
+def subject_desistement_valide_admin(parent_matricule: str, enfant_nom: str) -> str:
+    return f"Colonie 2026 — Désistement validé (notification) — {parent_matricule} — {enfant_nom}"
+
+
 def body_desistement_validated(*, parent_matricule: str, enfant: str, when: datetime):
     return (
         "Bonjour,\n\n"
@@ -137,6 +169,18 @@ def body_desistement_validated(*, parent_matricule: str, enfant: str, when: date
         f"- Matricule: {parent_matricule}\n"
         f"- Enfant: {enfant}\n"
         f"- Date: {_dt(when)}\n\n"
+        "Cordialement.\n"
+    )
+
+
+def body_desistement_validated_admin(*, parent_matricule: str, enfant: str, when: datetime):
+    return (
+        "Bonjour,\n\n"
+        "Un désistement a été validé depuis l’espace gestionnaire. "
+        "L’enfant concerné ne fait plus partie de la liste finale pour la Colonie 2026.\n\n"
+        f"- Matricule parent: {parent_matricule}\n"
+        f"- Enfant concerné: {enfant}\n"
+        f"- Date de validation: {_dt(when)}\n\n"
         "Cordialement.\n"
     )
 

@@ -64,6 +64,10 @@ class DemandeOut(BaseModel):
     is_selection_finale: bool
     has_desistement_pending: bool = False
     is_reinscrit: bool = False
+    date_desistement: Optional[datetime] = Field(
+        default=None,
+        description="Désistement validé: updated_at de la demande. En attente: created_at du désistement.",
+    )
 
     enfant_id: int
     enfant_prenom: str
