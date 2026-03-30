@@ -56,6 +56,22 @@ export default function MesInscriptions() {
     return { icon: <Clock className="w-4 h-4 text-muted-foreground" />, text: 'En attente de validation par le gestionnaire. Votre demande sera examinée prochainement.', color: 'bg-muted/50 border-border text-muted-foreground' };
   };
 
+  /** Rang métier dans la liste (toutes familles), fourni par l'API. */
+  const rangByIdFallback = new Map<string, number>();
+  (['principale', 'attente_n1', 'attente_n2'] as const).forEach((liste) => {
+    enfants
+      .filter((e) => e.liste === liste)
+      .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime())
+      .forEach((e, idx) => {
+        rangByIdFallback.set(e.id, idx + 1);
+      });
+  });
+
+  const getRangAffiche = (e: (typeof enfants)[0]) => {
+    if (typeof e.rangDansListe === 'number') return e.rangDansListe;
+    return rangByIdFallback.get(e.id) ?? '—';
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -104,9 +120,9 @@ export default function MesInscriptions() {
               {enfants.length === 0 ? (
                 <TableRow><TableCell colSpan={12} className="text-center py-8 text-muted-foreground">Aucune inscription</TableCell></TableRow>
               ) : (
-                enfants.map((e, i) => (
+                enfants.map((e) => (
                   <TableRow key={e.id}>
-                    <TableCell className="font-bold text-foreground">{i + 1}</TableCell>
+                    <TableCell className="font-bold text-foreground">{getRangAffiche(e)}</TableCell>
                     <TableCell className="font-medium text-foreground">{e.prenom} {e.nom}</TableCell>
                     <TableCell className="tabular-nums">{new Date(e.dateNaissance).toLocaleDateString('fr-FR')}</TableCell>
                     <TableCell>{calculateAge(e.dateNaissance)} ans</TableCell>
