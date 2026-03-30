@@ -9,7 +9,10 @@ interface InscriptionContextType {
   settings: AppSettings;
   historique: HistoriqueEntry[];
   updateSettings: (s: Partial<AppSettings>) => void;
-  addEnfant: (enfant: Enfant) => void | Promise<void>;
+  addEnfant: (
+    enfant: Enfant,
+    parentContact?: { email?: string; telephone: string; site_code: string },
+  ) => void | Promise<void>;
   updateEnfant: (id: string, updates: Partial<Enfant>) => void;
   removeEnfant: (id: string) => void;
   getEnfantsByParent: (matricule: string) => Enfant[];
@@ -265,18 +268,29 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
     }, ...prev]);
   };
 
-  const addEnfant = async (enfant: Enfant) => {
+  const addEnfant = async (
+    enfant: Enfant,
+    parentContact?: { email?: string; telephone: string; site_code: string },
+  ) => {
     if (token && role === 'parent' && authParent) {
+      if (!parentContact?.telephone?.trim() || !parentContact.site_code?.trim()) {
+        throw new Error('Téléphone et agence sont obligatoires pour enregistrer l’inscription.');
+      }
+      const parentPayload: Record<string, string> = {
+        matricule: authParent.matricule,
+        prenom: authParent.prenom,
+        nom: authParent.nom,
+        service: authParent.service,
+        telephone: parentContact.telephone.trim(),
+        site_code: String(parentContact.site_code).trim(),
+      };
+      const em = parentContact.email?.trim();
+      if (em) parentPayload.email = em;
       await apiRequest('/parent/inscriptions', {
         method: 'POST',
         token,
         body: JSON.stringify({
-          parent: {
-            matricule: authParent.matricule,
-            prenom: authParent.prenom,
-            nom: authParent.nom,
-            service: authParent.service,
-          },
+          parent: parentPayload,
           enfant: {
             prenom: enfant.prenom,
             nom: enfant.nom,

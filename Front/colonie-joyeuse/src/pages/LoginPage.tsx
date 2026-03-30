@@ -61,7 +61,15 @@ export default function LoginPage() {
 
       const me = await apiRequest<{
         role: 'parent';
-        parent?: { prenom: string; nom: string; matricule: string; service: string | null };
+        parent?: {
+          prenom: string | null;
+          nom: string | null;
+          matricule: string | null;
+          service: string | null;
+          email: string | null;
+          telephone: string | null;
+          site_code: string | null;
+        };
       }>('/auth/me', { token: tokenResponse.access_token });
 
       const parentProfile = me.parent
@@ -70,6 +78,9 @@ export default function LoginPage() {
             nom: me.parent.nom || '',
             matricule: me.parent.matricule || trimmed,
             service: me.parent.service || '',
+            email: me.parent.email || undefined,
+            telephone: me.parent.telephone || undefined,
+            site_code: me.parent.site_code || undefined,
           }
         : { prenom: '', nom: '', matricule: trimmed, service: '' };
 

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { apiRequest } from '@/lib/api';
 
 type UserRole = 'parent' | 'gestionnaire' | 'super_admin' | null;
 type AuthStep = 'logged_out' | 'force_password_change' | 'forgot_password' | 'logged_in';
@@ -9,6 +10,10 @@ export interface ParentProfile {
   nom: string;
   matricule: string;
   service: string;
+  email?: string;
+  telephone?: string;
+  /** Code agence (liste déroulante), aligné sur GET /admin/sites */
+  site_code?: string;
 }
 
 export interface PendingAdminFirstLogin {
@@ -32,6 +37,8 @@ interface AuthContextType {
   setPendingAdminFirstLogin: (p: PendingAdminFirstLogin | null) => void;
   /** Après changement de mot de passe obligatoire (admin), ouvre la session sans nouvelle connexion. */
   finalizeAdminFirstLogin: (email: string, role: AdminRole) => void;
+  /** Recharge le profil parent depuis GET /auth/me (ex. après inscription). */
+  refreshParentProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -93,6 +100,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthStep('logged_in');
   };
 
+  const refreshParentProfile = async () => {
+    if (!token) return;
+    try {
+      const me = await apiRequest<{
+        role: string;
+        parent?: {
+          prenom: string | null;
+          nom: string | null;
+          matricule: string | null;
+          service: string | null;
+          email: string | null;
+          telephone: string | null;
+          site_code: string | null;
+        };
+      }>('/auth/me', { token });
+      if (String(me.role).toUpperCase() !== 'PARENT' || !me.parent) return;
+      const p = me.parent;
+      setParent({
+        prenom: p.prenom || '',
+        nom: p.nom || '',
+        matricule: p.matricule || '',
+        service: p.service || '',
+        email: p.email || undefined,
+        telephone: p.telephone || undefined,
+        site_code: p.site_code || undefined,
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -110,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         pendingAdminFirstLogin,
         setPendingAdminFirstLogin,
         finalizeAdminFirstLogin,
+        refreshParentProfile,
       }}
     >
       {children}

@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 from app.models.enums import DemandeStatut, LienParente, ListeCode
 from app.models.models import DemandeInscription, Enfant, Liste, Parent, Service, User
 from app.services.runtime_settings_store import get_max_enfants_par_parent
-from app.services.users import normalize_parent_nin_for_storage, normalize_parent_telephone_for_storage
+from app.services.users import (
+    _get_or_create_site,
+    normalize_parent_nin_for_storage,
+    normalize_parent_telephone_for_storage,
+)
 
 DEFAULT_MAX_ENFANTS_PAR_PARENT = 2
 
@@ -79,6 +83,9 @@ def create_inscription_for_parent_user(
     parent_nom: str,
     parent_matricule: str,
     parent_service_nom: str,
+    parent_email: str | None,
+    parent_telephone: str,
+    parent_site_code: str,
     enfant_prenom: str,
     enfant_nom: str,
     enfant_date_naissance: date,
@@ -90,6 +97,20 @@ def create_inscription_for_parent_user(
 
     _validate_annee_naissance(enfant_date_naissance)
 
+    site_row = _get_or_create_site(db, parent_site_code)
+    if site_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Agence invalide ou non renseignée.",
+        )
+
+    email_stash = (parent_email or "").strip() or None
+    if email_stash:
+        email_stash = email_stash[:191]
+    tel_stash = normalize_parent_telephone_for_storage(
+        parent_telephone.strip(), matricule=parent_matricule
+    )
+
     parent = db.query(Parent).filter(Parent.user_id == user.id).first()
     if parent is None:
         service = _get_or_create_service(db, parent_service_nom)
@@ -97,37 +118,49 @@ def create_inscription_for_parent_user(
             prenom=parent_prenom,
             nom=parent_nom,
             matricule=parent_matricule,
-            email=None,
-            telephone=normalize_parent_telephone_for_storage(None, matricule=parent_matricule),
+            email=email_stash,
+            telephone=tel_stash,
             genre="-",
             nin=normalize_parent_nin_for_storage(None, matricule=parent_matricule),
             adresse="-",
             service_text=service.nom,
-            site_text="",
+            site_text=site_row.nom,
             service_id=service.id,
-            site_id=None,
+            site_id=site_row.id,
             user_id=user.id,
         )
         db.add(parent)
         db.flush()
     else:
+        service = _get_or_create_service(db, parent_service_nom)
         parent.prenom = parent_prenom
         parent.nom = parent_nom
         parent.matricule = parent_matricule
-        if parent.service_id is None:
-            svc = _get_or_create_service(db, parent_service_nom)
-            parent.service_id = svc.id
-            parent.service_text = svc.nom
+        parent.email = email_stash
+        parent.telephone = tel_stash
+        parent.service_id = service.id
+        parent.service_text = service.nom
+        parent.site_id = site_row.id
+        parent.site_text = site_row.nom
 
     max_enfants = _get_max_enfants_par_parent(db)
-    nb_enfants = db.query(func.count(Enfant.id)).filter(Enfant.parent_id == parent.id).scalar() or 0
-    if nb_enfants >= max_enfants:
+    # Compte les enfants qui ont au moins une demande (évite de bloquer si une demande a été
+    # supprimée en SQL sans supprimer la ligne `enfants`, qui ne s'affiche plus côté parent).
+    nb_enfants_avec_demande = (
+        db.query(func.count(func.distinct(Enfant.id)))
+        .select_from(Enfant)
+        .join(DemandeInscription, DemandeInscription.enfant_id == Enfant.id)
+        .filter(Enfant.parent_id == parent.id)
+        .scalar()
+        or 0
+    )
+    if nb_enfants_avec_demande >= max_enfants:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Inscription impossible : vous avez déjà inscrit {max_enfants} enfants (maximum autorisé).",
         )
 
-    is_first_child = nb_enfants == 0
+    is_first_child = nb_enfants_avec_demande == 0
     target_code = _compute_target_liste_code(
         parent_id=parent.id, lien_parente=enfant_lien_parente, is_first_child=is_first_child
     )

@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertTriangle, CheckCircle2, UserPlus, Star, Clock, PartyPopper } from 'lucide-react';
 
 export default function InscrireEnfant() {
-  const { parent, token } = useAuth();
+  const { parent, token, refreshParentProfile } = useAuth();
   const { getEnfantsByParent, addEnfant, settings } = useInscription();
   const [sites, setSites] = useState<Array<{ id: number; nom: string; code: string }>>([]);
 
@@ -23,7 +23,7 @@ export default function InscrireEnfant() {
   const [lienParente, setLienParente] = useState('');
   const [email, setEmail] = useState(parent?.email || '');
   const [telephone, setTelephone] = useState(parent?.telephone || '');
-  const [site, setSite] = useState(parent?.site || '');
+  const [site, setSite] = useState(parent?.site_code || '');
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorTitle, setErrorTitle] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -45,6 +45,13 @@ export default function InscrireEnfant() {
     };
     loadSites();
   }, [token]);
+
+  useEffect(() => {
+    if (!parent) return;
+    setEmail(parent.email || '');
+    setTelephone(parent.telephone || '');
+    setSite(parent.site_code || '');
+  }, [parent?.matricule, parent?.email, parent?.telephone, parent?.site_code]);
 
   if (!parent) return null;
 
@@ -125,7 +132,12 @@ export default function InscrireEnfant() {
     };
 
     try {
-      await addEnfant(newEnfant);
+      await addEnfant(newEnfant, {
+        email: email.trim() || undefined,
+        telephone: telephone.trim(),
+        site_code: site,
+      });
+      await refreshParentProfile();
     } catch (error) {
       setErrorTitle("Échec de l'inscription");
       setErrorMessage(error instanceof Error ? error.message : "Impossible d'enregistrer l'inscription.");
@@ -231,7 +243,7 @@ export default function InscrireEnfant() {
                   <SelectTrigger className="h-11 rounded-lg"><SelectValue placeholder="Sélectionner une agence" /></SelectTrigger>
                   <SelectContent>
                     {sites.map(s => (
-                      <SelectItem key={s.id} value={s.code}>{s.nom}</SelectItem>
+                      <SelectItem key={s.id} value={String(s.code)}>{s.nom}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

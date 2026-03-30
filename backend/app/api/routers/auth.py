@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
@@ -113,11 +113,22 @@ def me(
         "matricule": user.matricule,
     }
     if user.role == UserRole.PARENT:
-        parent = db.query(Parent).filter(Parent.user_id == user.id).first()
+        parent = (
+            db.query(Parent)
+            .options(joinedload(Parent.site_obj))
+            .filter(Parent.user_id == user.id)
+            .first()
+        )
+        site_code = None
+        if parent and parent.site_obj is not None:
+            site_code = parent.site_obj.code
         payload["parent"] = {
             "prenom": parent.prenom if parent else None,
             "nom": parent.nom if parent else None,
             "matricule": parent.matricule if parent else user.matricule,
             "service": parent.service_text if parent else None,
+            "email": parent.email if parent else None,
+            "telephone": parent.telephone if parent else None,
+            "site_code": str(site_code) if site_code is not None else None,
         }
     return payload

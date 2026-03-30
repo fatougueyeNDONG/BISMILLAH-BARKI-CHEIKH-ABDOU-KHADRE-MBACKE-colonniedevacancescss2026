@@ -13,6 +13,9 @@ class ParentInfoIn(BaseModel):
     prenom: str = Field(min_length=1, max_length=255)
     nom: str = Field(min_length=1, max_length=255)
     service: str = Field(min_length=1, max_length=255)
+    email: Optional[str] = Field(default=None, max_length=191)
+    telephone: str = Field(min_length=1, max_length=191)
+    site_code: str = Field(min_length=1, max_length=50)
 
 
 class EnfantCreateIn(BaseModel):
