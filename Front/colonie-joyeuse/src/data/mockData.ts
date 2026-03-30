@@ -27,6 +27,10 @@ export interface Enfant {
   validation?: 'en_attente' | 'validé' | 'refusé';
   motifRefus?: string;
   reinscrit?: boolean;
+  /** Rang affiché (API transparence). */
+  rangDansListe?: number;
+  /** SOUMISE | RETENUE | NON_VALIDEE | DESISTEE — vue transparence parent. */
+  statutDemande?: string;
 }
 
 export interface Inscription {

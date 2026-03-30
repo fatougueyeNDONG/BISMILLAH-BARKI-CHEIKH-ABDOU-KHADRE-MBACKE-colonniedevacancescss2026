@@ -3,21 +3,23 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import require_roles
 from app.db.session import get_db
-from app.models.enums import DemandeStatut, UserRole
+from app.models.enums import DemandeStatut, ListeCode, UserRole
 from app.models.models import DemandeInscription, Enfant, Parent, User
 from app.schemas.inscriptions import (
     DemandeOut,
     DesistementRequestIn,
     InscriptionCreateIn,
     TitulaireUpdateIn,
+    TransparenceInscriptionOut,
 )
 from app.services.inscriptions import (
     cancel_desistement,
     create_inscription_for_parent_user,
+    ensure_listes_exist,
     reinscrire_desiste,
     request_desistement,
     set_titulaire,
@@ -114,6 +116,65 @@ def mes_demandes(
         .all()
     )
     return [_to_demande_out(db, d) for d in demandes]
+
+
+_LISTE_ORDRE: dict[ListeCode, int] = {
+    ListeCode.PRINCIPALE: 0,
+    ListeCode.ATTENTE_N1: 1,
+    ListeCode.ATTENTE_N2: 2,
+}
+
+
+@router.get("/inscriptions-transparence", response_model=list[TransparenceInscriptionOut])
+def list_inscriptions_transparence(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.PARENT)),
+) -> list[TransparenceInscriptionOut]:
+    """Toutes les demandes d'inscription (listes), en consultation — parent authentifié."""
+    _ = user
+    ensure_listes_exist(db)
+    demandes = (
+        db.query(DemandeInscription)
+        .options(
+            joinedload(DemandeInscription.enfant).joinedload(Enfant.parent),
+            joinedload(DemandeInscription.liste),
+        )
+        .all()
+    )
+
+    def _cle_tri(d: DemandeInscription) -> tuple[int, int, int]:
+        code = d.liste.code
+        return (_LISTE_ORDRE.get(code, 99), d.rang_dans_liste, d.id)
+
+    demandes_tri = sorted(demandes, key=_cle_tri)
+    rows: list[TransparenceInscriptionOut] = []
+    for d in demandes_tri:
+        e = d.enfant
+        p = e.parent
+        liste = d.liste
+        d_ins = d.date_inscription
+        if isinstance(d_ins, datetime):
+            when = d_ins if d_ins.tzinfo else d_ins.replace(tzinfo=timezone.utc)
+        else:
+            when = datetime.combine(d_ins, datetime.min.time(), tzinfo=timezone.utc)
+        rows.append(
+            TransparenceInscriptionOut(
+                demande_id=d.id,
+                liste_code=liste.code.value,
+                rang_dans_liste=d.rang_dans_liste,
+                date_inscription=when,
+                statut_demande=d.statut.value,
+                parent_matricule=p.matricule,
+                parent_prenom=p.prenom,
+                parent_nom=p.nom,
+                parent_service=p.service_text,
+                enfant_prenom=e.prenom,
+                enfant_nom=e.nom,
+                enfant_date_naissance=e.date_naissance,
+                enfant_sexe=e.sexe.value,
+            )
+        )
+    return rows
 
 
 @router.post("/titulaire")

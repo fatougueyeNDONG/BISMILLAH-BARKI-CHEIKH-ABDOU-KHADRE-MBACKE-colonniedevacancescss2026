@@ -28,6 +28,27 @@ class InscriptionCreateIn(BaseModel):
     enfant: EnfantCreateIn
 
 
+class TransparenceInscriptionOut(BaseModel):
+    """Vue lecture seule pour les parents : toutes les demandes (transparence des listes)."""
+
+    demande_id: int
+    liste_code: str
+    rang_dans_liste: int
+    date_inscription: datetime
+    statut_demande: str
+    parent_matricule: str
+    parent_prenom: str
+    parent_nom: str
+    parent_service: str
+    enfant_prenom: str
+    enfant_nom: str
+    enfant_date_naissance: date
+    enfant_sexe: str
+
+    class Config:
+        from_attributes = True
+
+
 class DemandeOut(BaseModel):
     id: int
     liste_code: str
