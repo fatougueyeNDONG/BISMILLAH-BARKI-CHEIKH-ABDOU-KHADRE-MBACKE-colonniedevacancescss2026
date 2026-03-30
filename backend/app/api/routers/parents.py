@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import require_roles
@@ -17,6 +18,7 @@ from app.schemas.inscriptions import (
     TransparenceInscriptionOut,
 )
 from app.services.inscriptions import (
+    TELEPHONE_DEJA_UTILISE_DETAIL,
     cancel_desistement,
     create_inscription_for_parent_user,
     ensure_listes_exist,
@@ -47,23 +49,33 @@ def creer_inscription(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.PARENT)),
 ) -> DemandeOut:
-    demande = create_inscription_for_parent_user(
-        db=db,
-        user=user,
-        parent_prenom=payload.parent.prenom,
-        parent_nom=payload.parent.nom,
-        parent_matricule=payload.parent.matricule,
-        parent_service_nom=payload.parent.service,
-        parent_email=payload.parent.email,
-        parent_telephone=payload.parent.telephone,
-        parent_site_code=payload.parent.site_code,
-        enfant_prenom=payload.enfant.prenom,
-        enfant_nom=payload.enfant.nom,
-        enfant_date_naissance=payload.enfant.date_naissance,
-        enfant_sexe=payload.enfant.sexe,
-        enfant_lien_parente=payload.enfant.lien_parente,
-    )
-    db.commit()
+    try:
+        demande = create_inscription_for_parent_user(
+            db=db,
+            user=user,
+            parent_prenom=payload.parent.prenom,
+            parent_nom=payload.parent.nom,
+            parent_matricule=payload.parent.matricule,
+            parent_service_nom=payload.parent.service,
+            parent_email=payload.parent.email,
+            parent_telephone=payload.parent.telephone,
+            parent_site_code=payload.parent.site_code,
+            enfant_prenom=payload.enfant.prenom,
+            enfant_nom=payload.enfant.nom,
+            enfant_date_naissance=payload.enfant.date_naissance,
+            enfant_sexe=payload.enfant.sexe,
+            enfant_lien_parente=payload.enfant.lien_parente,
+        )
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raw = str(getattr(e, "orig", e) or e).lower()
+        if "telephone" in raw or "parents_telephone" in raw:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=TELEPHONE_DEJA_UTILISE_DETAIL,
+            ) from None
+        raise
     db.refresh(demande)
     out = _to_demande_out(db, demande)
 

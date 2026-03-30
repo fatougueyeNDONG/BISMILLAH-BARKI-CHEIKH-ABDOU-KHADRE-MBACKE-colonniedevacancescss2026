@@ -17,6 +17,27 @@ from app.services.users import (
 
 DEFAULT_MAX_ENFANTS_PAR_PARENT = 2
 
+TELEPHONE_DEJA_UTILISE_DETAIL = (
+    "Ce numéro de téléphone est déjà enregistré pour un autre compte parent. "
+    "Un même numéro ne peut pas être partagé entre deux comptes : utilisez un autre numéro, "
+    "ou connectez-vous avec le compte déjà associé à ce téléphone. "
+    "Pour toute aide, contactez l'administrateur."
+)
+
+
+def _raise_if_parent_telephone_conflict(db: Session, *, tel_stash: str, parent: Parent) -> None:
+    """Unicité `parents.telephone` : les valeurs factices `tel:{matricule}` sont exemptées."""
+    if tel_stash.startswith("tel:"):
+        return
+    q = db.query(Parent).filter(Parent.telephone == tel_stash)
+    if parent.id is not None:
+        q = q.filter(Parent.id != parent.id)
+    if q.first() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=TELEPHONE_DEJA_UTILISE_DETAIL,
+        )
+
 
 def _validate_annee_naissance(d: date) -> None:
     annee = d.year
@@ -142,6 +163,8 @@ def create_inscription_for_parent_user(
         parent.service_text = service.nom
         parent.site_id = site_row.id
         parent.site_text = site_row.nom
+
+    _raise_if_parent_telephone_conflict(db, tel_stash=tel_stash, parent=parent)
 
     max_enfants = _get_max_enfants_par_parent(db)
     # Compte les enfants qui ont au moins une demande (évite de bloquer si une demande a été
