@@ -96,6 +96,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
       date_inscription: string;
       statut: string;
       non_validation_reason?: string | null;
+      has_desistement_pending?: boolean;
       enfant_id: number;
       enfant_prenom: string;
       enfant_nom: string;
@@ -127,6 +128,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
         statut,
         dateInscription: d.date_inscription,
         validation: d.statut === 'NON_VALIDEE' ? 'refusé' : d.statut === 'RETENUE' ? 'validé' : 'en_attente',
+        desistement: d.statut === 'DESISTEE' ? 'validé' : d.has_desistement_pending ? 'demandé' : null,
         motifRefus: d.non_validation_reason || undefined,
         rangDansListe: typeof d.rang_dans_liste === 'number' ? d.rang_dans_liste : undefined,
       };

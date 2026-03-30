@@ -62,6 +62,7 @@ class DemandeOut(BaseModel):
     statut: str
     non_validation_reason: Optional[str] = None
     is_selection_finale: bool
+    has_desistement_pending: bool = False
 
     enfant_id: int
     enfant_prenom: str
