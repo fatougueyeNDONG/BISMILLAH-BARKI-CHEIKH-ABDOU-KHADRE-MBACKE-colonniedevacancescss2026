@@ -29,8 +29,6 @@ export interface Enfant {
   reinscrit?: boolean;
   /** Rang affiché (API transparence). */
   rangDansListe?: number;
-  /** SOUMISE | RETENUE | NON_VALIDEE | DESISTEE — vue transparence parent. */
-  statutDemande?: string;
 }
 
 export interface Inscription {

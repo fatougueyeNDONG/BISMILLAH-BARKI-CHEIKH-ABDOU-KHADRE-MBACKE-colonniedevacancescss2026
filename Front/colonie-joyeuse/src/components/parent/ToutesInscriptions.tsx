@@ -78,27 +78,14 @@ function mapRowsToState(rows: ApiTransparenceRow[]): { enfants: Enfant[]; parent
       statut: statutListe,
       dateInscription: r.date_inscription,
       validation,
-      statutDemande: sd,
       rangDansListe: r.rang_dans_liste,
     });
   }
   return { enfants, parents: Array.from(parentMap.values()) };
 }
 
-function libelleStatutAffiche(e: Enfant): string {
-  const sd = e.statutDemande;
-  if (sd === 'DESISTEE') return 'Désisté';
-  if (sd === 'NON_VALIDEE') return 'Non retenue';
-  if (sd === 'SOUMISE') return 'En attente (sélection)';
-  return e.statut;
-}
-
-function classeBadgeStatut(e: Enfant): string {
-  const sd = e.statutDemande;
-  if (sd === 'DESISTEE') return 'bg-muted text-muted-foreground';
-  if (sd === 'NON_VALIDEE') return 'bg-destructive/10 text-destructive';
-  if (sd === 'SOUMISE') return 'bg-amber-50 text-amber-800';
-  switch (e.statut) {
+function getStatutBadgeClass(statut: Enfant['statut']): string {
+  switch (statut) {
     case 'Titulaire':
       return 'bg-emerald-50 text-emerald-700';
     case 'Suppléant N1':
@@ -279,9 +266,9 @@ export default function ToutesInscriptions() {
                         </TableCell>
                         <TableCell>
                           <span
-                            className={`text-xs font-medium px-2 py-0.5 rounded-md ${classeBadgeStatut(e)}`}
+                            className={`text-xs font-medium px-2 py-0.5 rounded-md ${getStatutBadgeClass(e.statut)}`}
                           >
-                            {libelleStatutAffiche(e)}
+                            {e.statut}
                           </span>
                         </TableCell>
                         <TableCell className="tabular-nums text-sm text-muted-foreground">
