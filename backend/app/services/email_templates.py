@@ -26,6 +26,35 @@ def body_inscription(*, parent_matricule: str, enfant_prenom: str, enfant_nom: s
     )
 
 
+def subject_inscription_admin_notify(parent_matricule: str, enfant_nom: str) -> str:
+    return f"Colonie 2026 — Nouvelle inscription (notification) — {parent_matricule} — {enfant_nom}"
+
+
+def body_inscription_admin_notify(
+    *,
+    parent_matricule: str,
+    parent_prenom: str,
+    parent_nom: str,
+    enfant_prenom: str,
+    enfant_nom: str,
+    liste: str,
+    rang: int,
+    date: datetime,
+):
+    """Message pour gestionnaires / super admins (ton informatif, pas « votre inscription »)."""
+    return (
+        "Bonjour,\n\n"
+        "Un parent vient d’enregistrer une nouvelle inscription sur la plateforme Colonie 2026.\n\n"
+        f"- Matricule parent: {parent_matricule}\n"
+        f"- Parent: {parent_prenom} {parent_nom}\n"
+        f"- Enfant: {enfant_prenom} {enfant_nom}\n"
+        f"- Liste: {liste}\n"
+        f"- Rang: {rang}\n"
+        f"- Date d’enregistrement: {_dt(date)}\n\n"
+        "Cordialement.\n"
+    )
+
+
 def subject_titulaire(parent_matricule: str) -> str:
     return f"Colonie 2026 — Changement de titulaire ({parent_matricule})"
 

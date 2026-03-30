@@ -27,9 +27,11 @@ from app.services.notify_helpers import collect_admin_emails
 from app.services.email_templates import (
     body_desistement_requested,
     body_inscription,
+    body_inscription_admin_notify,
     body_titulaire,
     subject_desistement,
     subject_inscription,
+    subject_inscription_admin_notify,
     subject_titulaire,
 )
 
@@ -64,8 +66,9 @@ def creer_inscription(
     parent_email = parent.email if parent else None
     admin_emails = collect_admin_emails(db)
 
-    subject = subject_inscription(payload.parent.matricule, f"{payload.enfant.prenom} {payload.enfant.nom}")
-    body = body_inscription(
+    enfant_label = f"{payload.enfant.prenom} {payload.enfant.nom}"
+    subject_parent = subject_inscription(payload.parent.matricule, enfant_label)
+    body_parent = body_inscription(
         parent_matricule=payload.parent.matricule,
         enfant_prenom=payload.enfant.prenom,
         enfant_nom=payload.enfant.nom,
@@ -73,8 +76,24 @@ def creer_inscription(
         rang=out.rang_dans_liste,
         date=out.date_inscription,
     )
-    to = uniq_emails([parent_email] + admin_emails)
-    background.add_task(send_email, to=to, subject=subject, body=body)
+    to_parent = uniq_emails([parent_email])
+    if to_parent:
+        background.add_task(send_email, to=to_parent, subject=subject_parent, body=body_parent)
+
+    to_admins = uniq_emails(admin_emails)
+    if to_admins:
+        subject_admin = subject_inscription_admin_notify(payload.parent.matricule, enfant_label)
+        body_admin = body_inscription_admin_notify(
+            parent_matricule=payload.parent.matricule,
+            parent_prenom=payload.parent.prenom,
+            parent_nom=payload.parent.nom,
+            enfant_prenom=payload.enfant.prenom,
+            enfant_nom=payload.enfant.nom,
+            liste=out.liste_code,
+            rang=out.rang_dans_liste,
+            date=out.date_inscription,
+        )
+        background.add_task(send_email, to=to_admins, subject=subject_admin, body=body_admin)
 
     return out
 
