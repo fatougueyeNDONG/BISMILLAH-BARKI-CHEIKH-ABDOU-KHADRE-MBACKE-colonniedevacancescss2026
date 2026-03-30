@@ -47,6 +47,8 @@ class TransparenceInscriptionOut(BaseModel):
     enfant_nom: str
     enfant_date_naissance: date
     enfant_sexe: str
+    enfant_lien_parente: str
+    enfant_is_titulaire: bool
 
     class Config:
         from_attributes = True

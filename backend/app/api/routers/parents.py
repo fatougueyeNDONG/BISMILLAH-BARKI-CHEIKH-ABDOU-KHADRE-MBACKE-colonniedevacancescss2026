@@ -187,6 +187,8 @@ def list_inscriptions_transparence(
                 enfant_nom=e.nom,
                 enfant_date_naissance=e.date_naissance,
                 enfant_sexe=e.sexe.value,
+                enfant_lien_parente=e.lien_parente.value,
+                enfant_is_titulaire=e.is_titulaire,
             )
         )
     return rows

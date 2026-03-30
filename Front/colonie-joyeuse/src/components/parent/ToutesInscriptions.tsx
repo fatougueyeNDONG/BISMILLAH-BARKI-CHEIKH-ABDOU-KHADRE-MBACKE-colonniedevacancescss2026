@@ -30,6 +30,8 @@ type ApiTransparenceRow = {
   enfant_nom: string;
   enfant_date_naissance: string;
   enfant_sexe: string;
+  enfant_lien_parente: string;
+  enfant_is_titulaire: boolean;
 };
 
 function mapListe(value: string): Enfant['liste'] {
@@ -39,10 +41,12 @@ function mapListe(value: string): Enfant['liste'] {
   return 'attente_n2';
 }
 
-function mapStatutListe(liste: Enfant['liste']): Enfant['statut'] {
-  if (liste === 'principale') return 'Titulaire';
-  if (liste === 'attente_n1') return 'Suppléant N1';
-  return 'Suppléant N2';
+function mapLien(value: string): Enfant['lienParente'] {
+  const v = String(value || '').toUpperCase();
+  if (v === 'PERE') return 'Père';
+  if (v === 'MERE') return 'Mère';
+  if (v === 'TUTEUR_LEGAL') return 'Tuteur légal';
+  return 'Autre';
 }
 
 function mapRowsToState(rows: ApiTransparenceRow[]): { enfants: Enfant[]; parents: Parent[] } {
@@ -59,7 +63,12 @@ function mapRowsToState(rows: ApiTransparenceRow[]): { enfants: Enfant[]; parent
       });
     }
     const liste = mapListe(r.liste_code);
-    const statutListe = mapStatutListe(liste);
+    const lienParente = mapLien(r.enfant_lien_parente);
+    const statutListe: Enfant['statut'] = r.enfant_is_titulaire
+      ? 'Titulaire'
+      : lienParente === 'Autre'
+        ? 'Suppléant N2'
+        : 'Suppléant N1';
     const sd = String(r.statut_demande || '').toUpperCase();
     const validation =
       sd === 'NON_VALIDEE' ? 'refusé' : sd === 'RETENUE' || sd === 'DESISTEE' ? 'validé' : 'en_attente';
@@ -73,7 +82,7 @@ function mapRowsToState(rows: ApiTransparenceRow[]): { enfants: Enfant[]; parent
       nom: r.enfant_nom,
       dateNaissance: dob,
       sexe: String(r.enfant_sexe || '').toUpperCase() === 'F' ? 'F' : 'M',
-      lienParente: 'Autre',
+      lienParente,
       liste,
       statut: statutListe,
       dateInscription: r.date_inscription,
