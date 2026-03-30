@@ -65,6 +65,11 @@ def change_password(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, bool]:
+    if user.role == UserRole.PARENT and payload.new_password.strip() == DEFAULT_PARENT_PASSWORD:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Le nouveau mot de passe ne peut pas être le mot de passe par défaut (Passer123).",
+        )
     change_password_self(db, user=user, old_password=payload.old_password, new_password=payload.new_password)
     db.commit()
     return {"ok": True}

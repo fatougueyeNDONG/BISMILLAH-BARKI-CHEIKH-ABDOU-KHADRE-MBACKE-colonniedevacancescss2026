@@ -42,6 +42,11 @@ export default function ForcePasswordChange() {
       setErrorOpen(true);
       return;
     }
+    if (isParentFlow && newPwd.trim() === 'Passer123') {
+      setErrorMessage('Le nouveau mot de passe ne peut pas être le mot de passe par défaut (Passer123).');
+      setErrorOpen(true);
+      return;
+    }
     if (!token) {
       setErrorMessage('Session invalide. Veuillez vous reconnecter.');
       setErrorOpen(true);
