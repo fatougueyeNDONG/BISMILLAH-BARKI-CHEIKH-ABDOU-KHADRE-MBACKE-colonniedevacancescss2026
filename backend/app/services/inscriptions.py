@@ -229,19 +229,57 @@ def set_titulaire(*, db: Session, user: User, enfant_id_titulaire: int) -> None:
     enfants = db.query(Enfant).filter(Enfant.parent_id == parent.id).all()
     if len(enfants) == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Aucun enfant inscrit.")
-    if len(enfants) == 1:
-        enfants[0].is_titulaire = True
+    enfants_by_id = {int(e.id): e for e in enfants}
+
+    # Compat: l'UI historique envoie parfois l'id de demande au lieu de l'id enfant.
+    enfant_titulaire = enfants_by_id.get(int(enfant_id_titulaire))
+    if enfant_titulaire is None:
+        demande = (
+            db.query(DemandeInscription)
+            .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
+            .filter(DemandeInscription.id == enfant_id_titulaire, Enfant.parent_id == parent.id)
+            .first()
+        )
+        if demande is not None:
+            enfant_titulaire = demande.enfant
+    if enfant_titulaire is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enfant introuvable pour ce parent.")
+
+    ancien_titulaire = next((e for e in enfants if e.is_titulaire), None)
+
+    for e in enfants:
+        e.is_titulaire = e.id == enfant_titulaire.id
+
+    if len(enfants) == 1 or ancien_titulaire is None or ancien_titulaire.id == enfant_titulaire.id:
         return
 
-    found = False
-    for e in enfants:
-        if e.id == enfant_id_titulaire:
-            e.is_titulaire = True
-            found = True
-        else:
-            e.is_titulaire = False
-    if not found:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enfant introuvable pour ce parent.")
+    demandes = (
+        db.query(DemandeInscription)
+        .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
+        .filter(Enfant.parent_id == parent.id)
+        .all()
+    )
+    demande_by_enfant_id = {int(d.enfant_id): d for d in demandes}
+    ancienne_demande = demande_by_enfant_id.get(int(ancien_titulaire.id))
+    nouvelle_demande = demande_by_enfant_id.get(int(enfant_titulaire.id))
+    if ancienne_demande is None or nouvelle_demande is None:
+        return
+
+    ancienne_liste_id = int(ancienne_demande.liste_id)
+    ancien_rang = int(ancienne_demande.rang_dans_liste)
+    nouvelle_liste_id = int(nouvelle_demande.liste_id)
+    nouveau_rang = int(nouvelle_demande.rang_dans_liste)
+
+    for list_id in sorted({ancienne_liste_id, nouvelle_liste_id}):
+        db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": list_id})
+
+    # Valeur tampon pour éviter conflit d'unicité (liste_id, rang) pendant le swap.
+    ancienne_demande.rang_dans_liste = -999999
+    db.flush()
+    nouvelle_demande.liste_id = ancienne_liste_id
+    nouvelle_demande.rang_dans_liste = ancien_rang
+    ancienne_demande.liste_id = nouvelle_liste_id
+    ancienne_demande.rang_dans_liste = nouveau_rang
 
 
 def request_desistement(*, db: Session, user: User, demande_id: int, reason: str | None) -> None:
