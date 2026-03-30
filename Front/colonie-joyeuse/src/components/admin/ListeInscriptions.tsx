@@ -22,10 +22,7 @@ export default function ListeInscriptions() {
     return age;
   };
 
-  const sortedEnfants = [...enfants].sort((a, b) =>
-    new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime()
-  );
-
+  /** Même ordre que le contexte admin : principale → N1 → N2, chaque liste triée par rang. */
   const getStatutBadge = (statut: string) => {
     switch (statut) {
       case 'Titulaire': return 'bg-emerald-50 text-emerald-700';
@@ -44,7 +41,7 @@ export default function ListeInscriptions() {
     }
   };
 
-  const filtered = sortedEnfants.filter(e => {
+  const filtered = enfants.filter(e => {
     if (!searchTerm) return true;
     const p = parents.find(x => x.matricule === e.parentMatricule);
     const s = searchTerm.toLowerCase();
@@ -53,9 +50,10 @@ export default function ListeInscriptions() {
 
   const generateData = () => {
     const headers = ['Rang', 'Matricule', 'Nom Parent', 'Prénom Parent', 'Service', 'Nom Enfant', 'Prénom Enfant', 'Âge', 'Sexe', 'Statut', 'Liste', 'Inscrit le'];
-    const rows = filtered.map((e, i) => {
+    const rows = filtered.map((e) => {
       const p = parents.find(x => x.matricule === e.parentMatricule);
-      return [i + 1, e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'M' : 'F', e.statut, getListeLabel(e.liste), new Date(e.dateInscription).toLocaleDateString('fr-FR')];
+      const rang = typeof e.rangDansListe === 'number' ? e.rangDansListe : '';
+      return [rang, e.parentMatricule, p?.nom || '', p?.prenom || '', p?.service || '', e.nom, e.prenom, calculateAge(e.dateNaissance), e.sexe === 'M' ? 'M' : 'F', e.statut, getListeLabel(e.liste), new Date(e.dateInscription).toLocaleDateString('fr-FR')];
     });
     return { headers, rows };
   };
@@ -87,7 +85,9 @@ export default function ListeInscriptions() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Toutes les inscriptions</h1>
-          <p className="text-muted-foreground mt-1">{enfants.length} inscription(s) — classées par ordre d'arrivée</p>
+          <p className="text-muted-foreground mt-1">
+            {enfants.length} inscription(s) — liste principale puis N°1 et N°2 ; la colonne Rang est le rang dans la liste concernée
+          </p>
         </div>
         <div className="flex gap-2">
           <Button onClick={exportExcel} variant="outline" className="gap-2 rounded-lg">
@@ -124,11 +124,12 @@ export default function ListeInscriptions() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((e, i) => {
+              {filtered.map((e) => {
                 const p = parents.find(x => x.matricule === e.parentMatricule);
+                const rang = typeof e.rangDansListe === 'number' ? e.rangDansListe : '—';
                 return (
                   <TableRow key={e.id}>
-                    <TableCell className="font-bold text-foreground text-center">{i + 1}</TableCell>
+                    <TableCell className="font-bold text-foreground text-center">{rang}</TableCell>
                     <TableCell className="font-mono tabular-nums text-sm">{e.parentMatricule}</TableCell>
                     <TableCell>{p?.nom || '—'}</TableCell>
                     <TableCell>{p?.prenom || '—'}</TableCell>

@@ -89,6 +89,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
     const demandes = await apiRequest<Array<{
       id: number;
       liste_code: string;
+      rang_dans_liste: number;
       date_inscription: string;
       statut: string;
       non_validation_reason?: string | null;
@@ -117,6 +118,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
         dateInscription: d.date_inscription,
         validation: d.statut === 'NON_VALIDEE' ? 'refusé' : d.statut === 'RETENUE' ? 'validé' : 'en_attente',
         motifRefus: d.non_validation_reason || undefined,
+        rangDansListe: typeof d.rang_dans_liste === 'number' ? d.rang_dans_liste : undefined,
       };
     });
     setEnfants(mapped);
@@ -131,30 +133,57 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
 
   const reloadAdminDemandes = async () => {
     if (!token || (role !== 'gestionnaire' && role !== 'super_admin')) return;
-    const [l1, l2, l3, users, desistements] = await Promise.all([
+    const [l1, l2, l3, desistements] = await Promise.all([
       apiRequest<any[]>('/admin/listes/PRINCIPALE/demandes', { token }),
       apiRequest<any[]>('/admin/listes/ATTENTE_N1/demandes', { token }),
       apiRequest<any[]>('/admin/listes/ATTENTE_N2/demandes', { token }),
-      apiRequest<any[]>('/admin/users', { token }),
       apiRequest<any[]>('/admin/desistements/en-attente', { token }),
     ]);
 
-    const parentByMatricule = new Map<string, Parent>();
-    users
-      .filter((u) => String(u.role).toUpperCase() === 'PARENT')
-      .forEach((u) => {
-        const mat = u.matricule || '';
-        parentByMatricule.set(mat, {
-          matricule: mat,
-          prenom: u.parent_prenom || '',
-          nom: u.parent_nom || '',
-          service: u.parent_service || '',
-          motDePasse: '',
-          email: u.email || undefined,
-        });
-      });
-
     const merged = [...l1, ...l2, ...l3];
+    const parentByMatricule = new Map<string, Parent>();
+    merged.forEach((d) => {
+      const mat = String(d.parent_matricule || '').trim();
+      if (!mat) return;
+      parentByMatricule.set(mat, {
+        matricule: mat,
+        prenom: String(d.parent_prenom || ''),
+        nom: String(d.parent_nom || ''),
+        service: String(d.parent_service || ''),
+        motDePasse: '',
+      });
+    });
+    if (role === 'super_admin') {
+      try {
+        const users = await apiRequest<
+          Array<{
+            role: string;
+            matricule?: string | null;
+            parent_prenom?: string | null;
+            parent_nom?: string | null;
+            parent_service?: string | null;
+            email?: string | null;
+          }>
+        >('/admin/users', { token });
+        users
+          .filter((u) => String(u.role).toUpperCase() === 'PARENT')
+          .forEach((u) => {
+            const mat = String(u.matricule || '').trim();
+            if (!mat) return;
+            const cur = parentByMatricule.get(mat);
+            parentByMatricule.set(mat, {
+              matricule: mat,
+              prenom: String(u.parent_prenom || cur?.prenom || ''),
+              nom: String(u.parent_nom || cur?.nom || ''),
+              service: String(u.parent_service || cur?.service || ''),
+              motDePasse: '',
+              email: u.email || cur?.email,
+            });
+          });
+      } catch {
+        /* garde la carte construite depuis les demandes */
+      }
+    }
     const desistementMap = desistements.reduce((acc: Record<number, number>, d) => {
       if (typeof d.demande_id === 'number' && typeof d.desistement_id === 'number') {
         acc[d.demande_id] = d.desistement_id;
@@ -164,6 +193,12 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
     const mapped: Enfant[] = merged.map((d) => {
       const liste = mapListe(d.liste);
       const statut = String(d.statut || '').toUpperCase();
+      const rang =
+        typeof d.rang === 'number'
+          ? d.rang
+          : typeof d.rang_dans_liste === 'number'
+            ? d.rang_dans_liste
+            : undefined;
       return {
         id: String(d.demande_id),
         parentMatricule: d.parent_matricule,
@@ -178,6 +213,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
         validation: statut === 'NON_VALIDEE' ? 'refusé' : statut === 'RETENUE' || statut === 'DESISTEE' ? 'validé' : 'en_attente',
         motifRefus: d.non_validation_reason || undefined,
         desistement: statut === 'DESISTEE' ? 'validé' : desistementMap[d.demande_id] ? 'demandé' : null,
+        rangDansListe: rang,
       };
     });
 
@@ -269,9 +305,13 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const getEnfantsByListe = (liste: Enfant['liste']) => {
-    return enfants
-      .filter(e => e.liste === liste)
-      .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime());
+    const byRangThenDate = (a: Enfant, b: Enfant) => {
+      const ra = typeof a.rangDansListe === 'number' ? a.rangDansListe : Number.MAX_SAFE_INTEGER;
+      const rb = typeof b.rangDansListe === 'number' ? b.rangDansListe : Number.MAX_SAFE_INTEGER;
+      if (ra !== rb) return ra - rb;
+      return new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime();
+    };
+    return enfants.filter(e => e.liste === liste).sort(byRangThenDate);
   };
 
   const setTitulaire = async (matricule: string, enfantId: string) => {
@@ -423,6 +463,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
   const getRangDansListe = (enfantId: string) => {
     const enfant = enfants.find(e => e.id === enfantId);
     if (!enfant) return 0;
+    if (typeof enfant.rangDansListe === 'number') return enfant.rangDansListe;
     const listeEnfants = enfants
       .filter(e => e.liste === enfant.liste)
       .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime());

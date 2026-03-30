@@ -376,6 +376,9 @@ def list_demandes_par_liste(
             "non_validation_reason": d.non_validation_reason or None,
             "selection_finale": sel,
             "parent_matricule": p.matricule,
+            "parent_prenom": p.prenom,
+            "parent_nom": p.nom,
+            "parent_service": p.service_text,
             "enfant": {
                 "id": e.id,
                 "prenom": e.prenom,
