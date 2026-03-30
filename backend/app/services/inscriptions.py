@@ -231,17 +231,18 @@ def set_titulaire(*, db: Session, user: User, enfant_id_titulaire: int) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Aucun enfant inscrit.")
     enfants_by_id = {int(e.id): e for e in enfants}
 
-    # Compat: l'UI historique envoie parfois l'id de demande au lieu de l'id enfant.
-    enfant_titulaire = enfants_by_id.get(int(enfant_id_titulaire))
+    # Le front parent envoie l'id de demande ; on le priorise pour eviter
+    # les collisions numeriques possibles avec un id enfant.
+    demande = (
+        db.query(DemandeInscription)
+        .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
+        .filter(DemandeInscription.id == enfant_id_titulaire, Enfant.parent_id == parent.id)
+        .first()
+    )
+    enfant_titulaire = demande.enfant if demande is not None else None
     if enfant_titulaire is None:
-        demande = (
-            db.query(DemandeInscription)
-            .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
-            .filter(DemandeInscription.id == enfant_id_titulaire, Enfant.parent_id == parent.id)
-            .first()
-        )
-        if demande is not None:
-            enfant_titulaire = demande.enfant
+        # Compat fallback: certains clients peuvent encore envoyer enfant_id.
+        enfant_titulaire = enfants_by_id.get(int(enfant_id_titulaire))
     if enfant_titulaire is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enfant introuvable pour ce parent.")
 

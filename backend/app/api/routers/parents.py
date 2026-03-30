@@ -206,10 +206,19 @@ def definir_titulaire(
     new = None
     if parent:
         enfants = db.query(Enfant).filter(Enfant.parent_id == parent.id).all()
+        demande = (
+            db.query(DemandeInscription)
+            .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
+            .filter(DemandeInscription.id == payload.enfant_id_titulaire, Enfant.parent_id == parent.id)
+            .first()
+        )
+        enfant_cible = demande.enfant if demande is not None else None
         for e in enfants:
             if e.is_titulaire:
                 old = f"{e.prenom} {e.nom}"
-            if e.id == payload.enfant_id_titulaire:
+            if enfant_cible is not None and e.id == enfant_cible.id:
+                new = f"{e.prenom} {e.nom}"
+            elif enfant_cible is None and e.id == payload.enfant_id_titulaire:
                 new = f"{e.prenom} {e.nom}"
 
     set_titulaire(db=db, user=user, enfant_id_titulaire=payload.enfant_id_titulaire)
