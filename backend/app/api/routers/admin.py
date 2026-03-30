@@ -373,6 +373,7 @@ def list_demandes_par_liste(
             "rang": d.rang_dans_liste,
             "date_inscription": d.date_inscription,
             "statut": d.statut.value,
+            "is_reinscrit": (d.statut == DemandeStatut.SOUMISE and d.updated_at is not None),
             "non_validation_reason": d.non_validation_reason or None,
             "selection_finale": sel,
             "parent_matricule": p.matricule,

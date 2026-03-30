@@ -229,6 +229,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
         validation: statut === 'NON_VALIDEE' ? 'refusé' : statut === 'RETENUE' ? 'validé' : 'en_attente',
         motifRefus: d.non_validation_reason || undefined,
         desistement: statut === 'DESISTEE' ? 'validé' : desistementMap[d.demande_id] ? 'demandé' : null,
+        reinscrit: Boolean(d.is_reinscrit),
         rangDansListe: rang,
       };
     });
