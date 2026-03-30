@@ -356,8 +356,20 @@ def reinscrire_desiste(*, db: Session, user: User, demande_id: int) -> DemandeIn
             detail="Réinscription impossible : un désistement est encore en cours de traitement.",
         )
 
-    new_rang = _next_rang_for_liste(db, demande.liste_id)
-    demande.rang_dans_liste = new_rang
+    # Réinscription: conserver le rang courant si l'enfant est toujours le dernier
+    # (aucune nouvelle demande derrière lui). Sinon, le placer en fin de liste.
+    db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": int(demande.liste_id)})
+    max_other = (
+        db.query(func.coalesce(func.max(DemandeInscription.rang_dans_liste), 0))
+        .filter(
+            DemandeInscription.liste_id == demande.liste_id,
+            DemandeInscription.id != demande.id,
+        )
+        .scalar()
+    )
+    max_other = int(max_other or 0)
+    current_rang = int(demande.rang_dans_liste)
+    demande.rang_dans_liste = current_rang if max_other < current_rang else (max_other + 1)
     demande.statut = DemandeStatut.SOUMISE
     demande.non_validation_reason = ""
     demande.updated_at = datetime.now(timezone.utc)

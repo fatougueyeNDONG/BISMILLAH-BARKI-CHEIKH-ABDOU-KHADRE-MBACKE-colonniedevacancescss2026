@@ -291,7 +291,7 @@ export default function MesEnfants() {
             </div>
             <DialogDescription className="pt-2">
               Vous souhaitez réinscrire <strong>{reinscireName}</strong> après son désistement.
-              <br /><br /><strong>Important :</strong> L'enfant sera réintégré dans sa liste d'origine mais ne retrouvera pas son ancien rang. Il sera placé en fin de liste en respectant l'ordre d'arrivée (nouvelle date d'inscription).
+              <br /><br /><strong>Important :</strong> L'enfant sera réintégré dans sa liste d'origine. S'il est toujours le dernier de cette liste, il conserve son rang actuel ; sinon, il est repositionné en fin de liste selon l'ordre d'arrivée.
               <br /><br />La demande devra à nouveau être validée par le gestionnaire.
             </DialogDescription>
           </DialogHeader>
