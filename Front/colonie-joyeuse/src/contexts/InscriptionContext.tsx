@@ -99,7 +99,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
       enfant_sexe: string;
       enfant_lien_parente: string;
       enfant_is_titulaire: boolean;
-    }>>('/parents/demandes', { token });
+    }>>('/parent/demandes', { token });
 
     const mapped: Enfant[] = demandes.map(d => {
       const liste = mapListe(d.liste_code);
@@ -231,7 +231,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
 
   const addEnfant = async (enfant: Enfant) => {
     if (token && role === 'parent' && authParent) {
-      await apiRequest('/parents/inscriptions', {
+      await apiRequest('/parent/inscriptions', {
         method: 'POST',
         token,
         body: JSON.stringify({
@@ -276,7 +276,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
 
   const setTitulaire = async (matricule: string, enfantId: string) => {
     if (token && role === 'parent') {
-      await apiRequest('/parents/titulaire', {
+      await apiRequest('/parent/titulaire', {
         method: 'POST',
         token,
         body: JSON.stringify({ enfant_id_titulaire: Number(enfantId) }),
@@ -305,7 +305,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
 
   const demanderDesistement = async (enfantId: string) => {
     if (token && role === 'parent') {
-      await apiRequest(`/parents/desistement/${Number(enfantId)}`, {
+      await apiRequest(`/parent/desistement/${Number(enfantId)}`, {
         method: 'POST',
         token,
         body: JSON.stringify({ reason: null }),
@@ -318,7 +318,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
 
   const annulerDesistement = async (enfantId: string) => {
     if (token && role === 'parent') {
-      await apiRequest(`/parents/desistement/${Number(enfantId)}/annuler`, { method: 'POST', token });
+      await apiRequest(`/parent/desistement/${Number(enfantId)}/annuler`, { method: 'POST', token });
       await reloadParentDemandes();
       return;
     }
@@ -345,7 +345,7 @@ export function InscriptionProvider({ children }: { children: ReactNode }) {
 
   const reinscrireEnfant = async (enfantId: string) => {
     if (token && role === 'parent') {
-      await apiRequest(`/parents/desistement/${Number(enfantId)}/reinscrire`, { method: 'POST', token });
+      await apiRequest(`/parent/desistement/${Number(enfantId)}/reinscrire`, { method: 'POST', token });
       await reloadParentDemandes();
       return;
     }
