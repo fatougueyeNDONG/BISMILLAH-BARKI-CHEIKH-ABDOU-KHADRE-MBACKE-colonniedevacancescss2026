@@ -29,11 +29,15 @@ from app.services.inscriptions import (
 from app.services.email import send_email, uniq_emails
 from app.services.notify_helpers import collect_admin_emails
 from app.services.email_templates import (
+    body_desistement_cancelled_admin,
+    body_desistement_cancelled_parent,
     body_desistement_requested,
     body_desistement_requested_admin,
     body_inscription,
     body_inscription_admin_notify,
     body_titulaire,
+    subject_desistement_annule_admin,
+    subject_desistement_annule_parent,
     subject_desistement,
     subject_desistement_admin,
     subject_inscription,
@@ -296,11 +300,51 @@ def demander_desistement(
 @router.post("/desistement/{demande_id}/annuler")
 def annuler_desistement(
     demande_id: int,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(require_roles(UserRole.PARENT)),
 ):
+    parent = db.query(Parent).filter(Parent.user_id == user.id).first()
+    enfant_label = ""
+    if parent:
+        d = (
+            db.query(DemandeInscription)
+            .join(Enfant, Enfant.id == DemandeInscription.enfant_id)
+            .filter(DemandeInscription.id == demande_id, Enfant.parent_id == parent.id)
+            .first()
+        )
+        if d:
+            enfant_label = f"{d.enfant.prenom} {d.enfant.nom}"
+
     cancel_desistement(db=db, user=user, demande_id=demande_id)
     db.commit()
+
+    if parent and enfant_label:
+        admin_emails = collect_admin_emails(db)
+        now = datetime.now(timezone.utc)
+        if parent.email:
+            background.add_task(
+                send_email,
+                to=uniq_emails([parent.email]),
+                subject=subject_desistement_annule_parent(parent.matricule, enfant_label),
+                body=body_desistement_cancelled_parent(
+                    parent_matricule=parent.matricule,
+                    enfant=enfant_label,
+                    when=now,
+                ),
+            )
+        to_admins = uniq_emails(admin_emails)
+        if to_admins:
+            background.add_task(
+                send_email,
+                to=to_admins,
+                subject=subject_desistement_annule_admin(parent.matricule, enfant_label),
+                body=body_desistement_cancelled_admin(
+                    parent_matricule=parent.matricule,
+                    enfant=enfant_label,
+                    when=now,
+                ),
+            )
     return {"ok": True}
 
 

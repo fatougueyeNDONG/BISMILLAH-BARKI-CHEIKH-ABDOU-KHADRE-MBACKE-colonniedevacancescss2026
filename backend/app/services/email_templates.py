@@ -184,3 +184,34 @@ def body_desistement_validated_admin(*, parent_matricule: str, enfant: str, when
         "Cordialement.\n"
     )
 
+
+def subject_desistement_annule_parent(parent_matricule: str, enfant_nom: str) -> str:
+    return f"Colonie 2026 — Désistement annulé ({parent_matricule}) — {enfant_nom}"
+
+
+def subject_desistement_annule_admin(parent_matricule: str, enfant_nom: str) -> str:
+    return f"Colonie 2026 — Annulation de désistement — {parent_matricule} — {enfant_nom}"
+
+
+def body_desistement_cancelled_parent(*, parent_matricule: str, enfant: str, when: datetime):
+    return (
+        "Bonjour,\n\n"
+        "Votre demande de désistement a bien été annulée.\n\n"
+        f"- Matricule: {parent_matricule}\n"
+        f"- Enfant: {enfant}\n"
+        f"- Date d'annulation: {_dt(when)}\n\n"
+        "Cordialement.\n"
+    )
+
+
+def body_desistement_cancelled_admin(*, parent_matricule: str, enfant: str, when: datetime):
+    return (
+        "Bonjour,\n\n"
+        "Un parent a annulé une demande de désistement avant validation gestionnaire.\n\n"
+        f"- Matricule parent: {parent_matricule}\n"
+        f"- Enfant concerné: {enfant}\n"
+        f"- Date d'annulation: {_dt(when)}\n\n"
+        "Aucune action n'est requise si la demande n'a pas encore été traitée.\n\n"
+        "Cordialement.\n"
+    )
+
