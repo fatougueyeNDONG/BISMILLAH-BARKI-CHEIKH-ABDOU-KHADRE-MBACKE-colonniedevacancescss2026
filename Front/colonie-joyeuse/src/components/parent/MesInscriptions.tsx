@@ -1,9 +1,16 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInscription } from '@/contexts/InscriptionContext';
+import { apiRequest } from '@/lib/api';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Info, CheckCircle2, XCircle, Clock, Phone } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock } from 'lucide-react';
+
+type TransparenceRow = {
+  demande_id: number;
+  liste_code: string;
+  date_inscription: string;
+};
 
 function calculateAge(dateNaissance: string): number {
   const birth = new Date(dateNaissance);
@@ -15,11 +22,52 @@ function calculateAge(dateNaissance: string): number {
 }
 
 export default function MesInscriptions() {
-  const { parent } = useAuth();
+  const { parent, token, role } = useAuth();
   const { getEnfantsByParent } = useInscription();
-  if (!parent) return null;
+  const [rangCommeGestionnaire, setRangCommeGestionnaire] = useState<Map<string, number>>(new Map());
 
-  const enfants = getEnfantsByParent(parent.matricule);
+  const enfants = parent ? getEnfantsByParent(parent.matricule) : [];
+  const transparenceDeps = useMemo(
+    () => enfants.map((e) => `${e.id}:${e.dateInscription}:${e.liste}`).join('|'),
+    [enfants],
+  );
+
+  /** Même règle que GestionListe : tri par date d'inscription sur chaque liste, puis Rang = index 1…n. */
+  useEffect(() => {
+    if (!token || role !== 'parent') {
+      setRangCommeGestionnaire(new Map());
+      return;
+    }
+    let cancelled = false;
+    apiRequest<TransparenceRow[]>('/parent/inscriptions-transparence', { token })
+      .then((rows) => {
+        if (cancelled) return;
+        const byListe = new Map<string, TransparenceRow[]>();
+        for (const r of rows) {
+          const code = String(r.liste_code || '').toUpperCase();
+          if (!byListe.has(code)) byListe.set(code, []);
+          byListe.get(code)!.push(r);
+        }
+        const m = new Map<string, number>();
+        byListe.forEach((list) => {
+          const sorted = [...list].sort(
+            (a, b) => new Date(a.date_inscription).getTime() - new Date(b.date_inscription).getTime(),
+          );
+          sorted.forEach((r, i) => {
+            m.set(String(r.demande_id), i + 1);
+          });
+        });
+        setRangCommeGestionnaire(m);
+      })
+      .catch(() => {
+        if (!cancelled) setRangCommeGestionnaire(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, role, transparenceDeps]);
+
+  if (!parent) return null;
 
   const getStatutBadge = (statut: string) => {
     switch (statut) {
@@ -56,27 +104,20 @@ export default function MesInscriptions() {
     return { icon: <Clock className="w-4 h-4 text-muted-foreground" />, text: 'En attente de validation par le gestionnaire. Votre demande sera examinée prochainement.', color: 'bg-muted/50 border-border text-muted-foreground' };
   };
 
-  /** Rang métier dans la liste (toutes familles), fourni par l'API. */
-  const rangByIdFallback = new Map<string, number>();
-  (['principale', 'attente_n1', 'attente_n2'] as const).forEach((liste) => {
-    enfants
-      .filter((e) => e.liste === liste)
-      .sort((a, b) => new Date(a.dateInscription).getTime() - new Date(b.dateInscription).getTime())
-      .forEach((e, idx) => {
-        rangByIdFallback.set(e.id, idx + 1);
-      });
-  });
-
   const getRangAffiche = (e: (typeof enfants)[0]) => {
-    if (typeof e.rangDansListe === 'number') return e.rangDansListe;
-    return rangByIdFallback.get(e.id) ?? '—';
+    const v = rangCommeGestionnaire.get(e.id);
+    if (typeof v === 'number') return v;
+    return '—';
   };
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-foreground">Mes inscriptions</h1>
-        <p className="text-muted-foreground mt-1">Historique de vos inscriptions pour la Colonie 2026</p>
+        <p className="text-muted-foreground mt-1">
+          Historique de vos inscriptions pour la Colonie 2026. La colonne « Rang » reprend la même position que
+          sur la liste correspondante côté gestionnaire (tri par date d&apos;inscription sur toute la liste).
+        </p>
       </motion.div>
 
       {/* Status notifications for each child */}
